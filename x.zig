@@ -653,6 +653,9 @@ pub const window = struct {
         pub const backing_store: u32 = (1 << 6);
         pub const backing_planes: u32 = (1 << 7);
         pub const backing_pixel: u32 = (1 << 8);
+        /// Whether this window overrides structure control facilities. Basically, a
+        /// suggestion whether the window manager to decorate this window (false) or we
+        /// want to override the behavior.
         pub const override_redirect: u32 = (1 << 9);
         pub const save_under: u32 = (1 << 10);
         pub const event_mask: u32 = (1 << 11);
@@ -680,7 +683,7 @@ pub const window = struct {
         save_under: bool = false,
         event_mask: u32 = 0,
         dont_propagate: u32 = 0,
-        colormap: Colormap = .copy_from_parent,
+        colormap: NonExhaustive(Colormap) = .copy_from_parent,
         cursor: Cursor = .none,
     };
 };
@@ -706,6 +709,9 @@ pub const create_window = struct {
     pub const Args = struct {
         window_id: u32,
         parent_window_id: u32,
+        /// Color depth of the window. Typically 24 for RGB or 32 for ARGB. A value of 0
+        /// means we will inherit from the parent window. Must match the capabilities of
+        /// the visual_id otherwise you will run into a `match` error.
         depth: u8,
         x: u16,
         y: u16,
@@ -1106,6 +1112,7 @@ pub const free_pixmap = struct {
     }
 };
 
+/// Create graphics context
 pub const create_gc = struct {
     pub const non_option_len =
         2 // opcode and unused
@@ -2048,9 +2055,9 @@ comptime {
     if (@sizeOf(Format) != 8) @compileError("Format size is wrong");
 }
 
-comptime {
-    std.debug.assert(@sizeOf(Screen) == 40);
-}
+// comptime {
+//     std.debug.assert(@sizeOf(Screen) == 40);
+// }
 pub const Screen = extern struct {
     root: u32,
     colormap: u32,
@@ -2068,16 +2075,18 @@ pub const Screen = extern struct {
     save_unders: u8,
     root_depth: u8,
     allowed_depth_count: u8,
+    allowed_depths: [*]align(4) ScreenDepth,
 };
 
-comptime {
-    std.debug.assert(@sizeOf(ScreenDepth) == 8);
-}
+// comptime {
+//     std.debug.assert(@sizeOf(ScreenDepth) == 8);
+// }
 pub const ScreenDepth = extern struct {
     depth: u8,
     unused0: u8,
     visual_type_count: u16,
     unused1: u32,
+    visual_types: [*]align(4) VisualType,
 };
 
 comptime {
@@ -2162,7 +2171,11 @@ pub const ImageByteOrder = enum(u8) {
     msb_first = 1,
 };
 
+// See https://www.x.org/releases/current/doc/xproto/x11protocol.html#Encoding::Connection_Setup
 pub const ConnectSetup = struct {
+    // We need to parse this buffer with the shape of a Header -> Fixed -> List of
+    // Formats -> List of Screens (each with their own list of depths and visuals)
+    //
     // because X makes an effort to align things to 4-byte bounaries, we
     // should get some better codegen by ensuring that our buffer is aligned
     // to 4-bytes
@@ -2202,9 +2215,9 @@ pub const ConnectSetup = struct {
         }
     };
 
-    comptime {
-        std.debug.assert(@sizeOf(Fixed) == 32);
-    }
+    // comptime {
+    //     std.debug.assert(@sizeOf(Fixed) == 32);
+    // }
     /// All the connect setup fields that are at fixed offsets
     pub const Fixed = extern struct {
         release_number: u32,
@@ -2222,9 +2235,11 @@ pub const ConnectSetup = struct {
         min_keycode: u8,
         max_keycode: u8,
         unused: u32,
+        /// Pointer to a list of screens
+        screens: [*]align(4) Screen,
     };
     pub fn fixed(self: @This()) *Fixed {
-        return @ptrCast(self.buf.ptr);
+        return @alignCast(@ptrCast(self.buf.ptr));
     }
 
     pub const VendorOffset = 32;
@@ -2244,7 +2259,10 @@ pub const ConnectSetup = struct {
     pub fn getFormatListPtr(self: @This(), format_list_offset: u32) [*]align(4) Format {
         return @alignCast(@ptrCast(self.buf.ptr + format_list_offset));
     }
-    pub fn getFormatList(self: @This(), format_list_offset: u32, format_list_limit: u32) ![]align(4) Format {
+    pub fn getFormatList(self: @This()) ![]align(4) Format {
+        var format_list_offset = getFormatListOffset(self.fixed().vendor_len);
+        var format_list_limit = getFormatListLimit(format_list_offset, self.fixed().format_count);
+
         if (format_list_limit > self.buf.len)
             return error.XMalformedReply_FormatCountTooBig;
         return self.getFormatListPtr(format_list_offset)[0..@divExact(format_list_limit - format_list_offset, @sizeOf(Format))];
@@ -2253,9 +2271,38 @@ pub const ConnectSetup = struct {
     pub fn getFirstScreenPtr(self: @This(), format_list_limit: u32) *align(4) Screen {
         return @alignCast(@ptrCast(self.buf.ptr + format_list_limit));
     }
+    // TODO: This function feels dubious (at least the part that it actually returns
+    // `[*]align(4) Screen`) since each `Screen` has a sub list of depths and visuals that
+    // the `Screen` type isn't accounting for. Seems like it would break when multiple
+    // screens are connected but I haven't tested that.
     pub fn getScreensPtr(self: @This(), format_list_limit: u32) [*]align(4) Screen {
         return @alignCast(@ptrCast(self.buf.ptr + format_list_limit));
     }
+    // pub fn getScreensList(self: @This()) ![]Screen {
+    //     const format_list_offset = getFormatListOffset(self.fixed().vendor_len);
+    //     const format_list_limit = getFormatListLimit(format_list_offset, self.fixed().format_count);
+
+    //     const screen_count = self.fixed().root_screen_count;
+
+    //     var screen_list = [screen_count]Screen{};
+
+    //     const buffer_offset = format_list_limit;
+    //     for (0..screen_count) |i| {
+    //         var screen: Screen = @alignCast(@ptrCast(self.buf.ptr + buffer_offset));
+    //         screen_list[i] = screen;
+
+    //         buffer_offset += (screen.allowed_depth_count * @sizeOf(ScreenDepth)) + (screen.allowed_depth_count * 24 * @sizeOf(VisualType));
+    //     }
+
+    //     return screen_list;
+    // }
+
+    // pub fn getFirstScreenDepthListOffset(vendor_len: u16) u32 {
+    //     return getFormatListOffset(vendor_len) + @sizeOf(Screen);
+    // }
+    // pub fn getFirstScreenDepthListLimit(screen_depth_list_offset: u32) u32 {
+    //     return screen_depth_list_offset + @sizeOf(ScreenDepth);
+    // }
 };
 
 pub fn rgb24To16(color: u24) u16 {

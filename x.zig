@@ -2085,10 +2085,23 @@ pub const Screen = extern struct {
     pub fn getAllowedDepths(self: @This(), allocator: std.mem.Allocator) ![]align(4) ScreenDepth {
         var depth_list = try allocator.alloc(ScreenDepth, self.allowed_depth_count);
         var pointer_offset: usize = 0;
+        std.log.debug("asdf allowed_depth_count {}", .{self.allowed_depth_count});
         for (0..self.allowed_depth_count) |i| {
-            var depth: *align(4) ScreenDepth = @alignCast(@ptrCast(@constCast(self._allowed_depths_array_start[0..].ptr + pointer_offset)));
-            depth_list[i] = depth.*;
-            pointer_offset += @sizeOf(ScreenDepth) + (@sizeOf(VisualType) * depth.visual_type_count);
+            std.log.debug("asdf iterating through depth {}", .{i});
+            var depth_ptr: *align(4) ScreenDepth = @ptrFromInt(@intFromPtr(&self._allowed_depths_array_start) + pointer_offset);
+            depth_list[i] = depth_ptr.*;
+            inline for (@typeInfo(ScreenDepth).Struct.fields) |field| {
+                std.log.debug("asdf SCREENDEPTH | {s}: {any}", .{ field.name, @field(depth_ptr, field.name) });
+            }
+            const depth_variable_size: usize = @as(usize, @sizeOf(ScreenDepth)) + (@as(usize, @sizeOf(VisualType)) * @as(usize,
+            // We `- 1` because there is already the first `VisualType` stored in
+            // `ScreenDepth._visual_types_array_start` that we don't want to repeat in our calculations.
+            depth_ptr.visual_type_count - 1));
+            std.log.debug("visual count {}, pointer_offset += {}", .{
+                depth_ptr.visual_type_count,
+                depth_variable_size,
+            });
+            pointer_offset += depth_variable_size;
         }
 
         return depth_list;
@@ -2274,6 +2287,7 @@ pub const ConnectSetup = struct {
         return self.buf[VendorOffset..vendor_limit];
     }
 
+    // FIXME: I think these should probably return `usize` which is the size of a pointer
     pub fn getFormatListOffset(vendor_len: u16) u32 {
         return VendorOffset + std.mem.alignForward(u32, vendor_len, 4);
     }

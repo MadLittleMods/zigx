@@ -2087,16 +2087,29 @@ pub const Screen = extern struct {
         var pointer_offset: usize = 0;
         std.log.debug("asdf allowed_depth_count {}", .{self.allowed_depth_count});
         for (0..self.allowed_depth_count) |i| {
-            std.log.debug("asdf iterating through depth {}", .{i});
+            std.log.debug("asdf iterating through depth {} - {} vs {} vs &self={} vs {} vs {}", .{
+                i,
+                @intFromPtr(&self.allowed_depth_count),
+                @intFromPtr(&self._allowed_depths_array_start),
+                @intFromPtr(&self),
+                @intFromPtr(&self) + @offsetOf(@TypeOf(self), "allowed_depth_count"),
+                @intFromPtr(&self) + @offsetOf(@TypeOf(self), "_allowed_depths_array_start"),
+            });
             var depth_ptr: *align(4) ScreenDepth = @ptrFromInt(@intFromPtr(&self._allowed_depths_array_start) + pointer_offset);
-            depth_list[i] = depth_ptr.*;
+            //var depth_ptr: *align(4) ScreenDepth = @as([*]align(4) ScreenDepth, @ptrCast(&self._allowed_depths_array_start));
+            //var depth_ptr = @as([*]align(4) ScreenDepth, @constCast(@ptrCast(&self._allowed_depths_array_start)));
+
             inline for (@typeInfo(ScreenDepth).Struct.fields) |field| {
                 std.log.debug("asdf SCREENDEPTH | {s}: {any}", .{ field.name, @field(depth_ptr, field.name) });
             }
-            const depth_variable_size: usize = @as(usize, @sizeOf(ScreenDepth)) + (@as(usize, @sizeOf(VisualType)) * @as(usize,
-            // We `- 1` because there is already the first `VisualType` stored in
-            // `ScreenDepth._visual_types_array_start` that we don't want to repeat in our calculations.
-            depth_ptr.visual_type_count - 1));
+
+            // Sanity check we did the correct pointer arithmetic
+            std.debug.assert(depth_ptr.unused0 == 0);
+            std.debug.assert(depth_ptr.unused1 == 0);
+
+            depth_list[i] = depth_ptr.*;
+
+            const depth_variable_size: usize = @as(usize, @sizeOf(ScreenDepth)) + (@as(usize, @sizeOf(VisualType)) * @as(usize, depth_ptr.visual_type_count - 1));
             std.log.debug("visual count {}, pointer_offset += {}", .{
                 depth_ptr.visual_type_count,
                 depth_variable_size,
@@ -2123,7 +2136,7 @@ pub const ScreenDepth = extern struct {
     // start of the array which we can achieve with `&self._visual_types_array_start`
     _visual_types_array_start: [1]VisualType,
 
-    pub fn getVisualTypes(self: @This()) []VisualType {
+    pub fn getVisualTypes(self: @This()) ![]align(4) VisualType {
         return (&self._visual_types_array_start)[0..self.visual_type_count];
     }
 };

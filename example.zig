@@ -20,13 +20,20 @@ pub fn main() !u8 {
         }
         std.log.debug("vendor: {s}", .{try conn.setup.getVendorSlice(fixed.vendor_len)});
 
-        var screens = fixed.screens;
-        for (0..fixed.root_screen_count) |screen_index| {
+        var screens = try conn.setup.getScreens(allocator);
+        for (0..screens.len) |screen_index| {
             std.log.debug("asdf SCREEN {}| ", .{screen_index});
             var screen = screens[screen_index];
-            _ = screen;
-            // inline for (@typeInfo(x.Screen).Struct.fields) |field| {
-            //     std.log.debug("SCREEN {}| {s}: {any}", .{ screen_index, field.name, @field(screen, field.name) });
+            inline for (@typeInfo(x.Screen).Struct.fields) |field| {
+                std.log.debug("asdf SCREEN {}| {s}: {any}", .{ screen_index, field.name, @field(screen, field.name) });
+            }
+
+            // for (0..screen.allowed_depth_count) |depth_index| {
+            //     var depth = screen.allowed_depths[depth_index];
+            //     std.log.debug("asdf SCREENDEPTH {}| {}", .{ depth_index, depth.depth });
+            //     // inline for (@typeInfo(x.ScreenDepth).Struct.fields) |field| {
+            //     //     std.log.debug("asdf SCREENDEPTH {}| {s}: {any}", .{ depth_index, field.name, @field(screen.allowed_depths[depth_index], field.name) });
+            //     // }
             // }
         }
 

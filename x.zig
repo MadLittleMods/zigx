@@ -2058,6 +2058,9 @@ comptime {
 // comptime {
 //     std.debug.assert(@sizeOf(Screen) == 40);
 // }
+comptime {
+    std.debug.assert(@sizeOf(Screen) == 72);
+}
 pub const Screen = extern struct {
     root: u32,
     colormap: u32,
@@ -2075,18 +2078,41 @@ pub const Screen = extern struct {
     save_unders: u8,
     root_depth: u8,
     allowed_depth_count: u8,
-    allowed_depths: [*]align(4) ScreenDepth,
+    // `allowed_depths` is a variable length array, and we want to get a pointer to the
+    // start of the array which we can achieve with `&self._allowed_depths_array_start`
+    _allowed_depths_array_start: [1]ScreenDepth,
+
+    pub fn getAllowedDepths(self: @This(), allocator: std.mem.Allocator) ![]align(4) ScreenDepth {
+        var depth_list = try allocator.alloc(ScreenDepth, self.allowed_depth_count);
+        var pointer_offset: usize = 0;
+        for (0..self.allowed_depth_count) |i| {
+            var depth: *align(4) ScreenDepth = @alignCast(@ptrCast(@constCast(self._allowed_depths_array_start[0..].ptr + pointer_offset)));
+            depth_list[i] = depth.*;
+            pointer_offset += @sizeOf(ScreenDepth) + (@sizeOf(VisualType) * depth.visual_type_count);
+        }
+
+        return depth_list;
+    }
 };
 
 // comptime {
 //     std.debug.assert(@sizeOf(ScreenDepth) == 8);
 // }
+comptime {
+    std.debug.assert(@sizeOf(ScreenDepth) == 32);
+}
 pub const ScreenDepth = extern struct {
     depth: u8,
     unused0: u8,
     visual_type_count: u16,
     unused1: u32,
-    visual_types: [*]align(4) VisualType,
+    // `visual_types` is a variable length array, and we want to get a pointer to the
+    // start of the array which we can achieve with `&self._visual_types_array_start`
+    _visual_types_array_start: [1]VisualType,
+
+    pub fn getVisualTypes(self: @This()) []VisualType {
+        return (&self._visual_types_array_start)[0..self.visual_type_count];
+    }
 };
 
 comptime {
@@ -2215,9 +2241,9 @@ pub const ConnectSetup = struct {
         }
     };
 
-    // comptime {
-    //     std.debug.assert(@sizeOf(Fixed) == 32);
-    // }
+    comptime {
+        std.debug.assert(@sizeOf(Fixed) == 32);
+    }
     /// All the connect setup fields that are at fixed offsets
     pub const Fixed = extern struct {
         release_number: u32,
@@ -2235,8 +2261,6 @@ pub const ConnectSetup = struct {
         min_keycode: u8,
         max_keycode: u8,
         unused: u32,
-        /// Pointer to a list of screens
-        screens: [*]align(4) Screen,
     };
     pub fn fixed(self: @This()) *Fixed {
         return @alignCast(@ptrCast(self.buf.ptr));
@@ -2303,6 +2327,46 @@ pub const ConnectSetup = struct {
     // pub fn getFirstScreenDepthListLimit(screen_depth_list_offset: u32) u32 {
     //     return screen_depth_list_offset + @sizeOf(ScreenDepth);
     // }
+
+    // pub fn get_screens(self: @This(), allocator: std.mem.Allocator) ![]align(4) Screen {
+    //     const format_list_offset = getFormatListOffset(self.fixed().vendor_len);
+    //     const format_list_limit = getFormatListLimit(format_list_offset, self.fixed().format_count);
+
+    //     const screen_count = self.fixed().root_screen_count;
+    //     var screen_list = try allocator.alloc(Screen, screen_count);
+
+    //     const buffer_offset = format_list_limit;
+    //     for (0..screen_count) |screen_index| {
+    //         var screen: *align(4) Screen = @alignCast(@ptrCast(self.buf.ptr + buffer_offset));
+    //         screen_list[screen_index] = screen.*;
+    //     }
+
+    //     return screen_list;
+    // }
+
+    pub fn getScreens(self: @This(), allocator: std.mem.Allocator) ![]align(4) Screen {
+        const format_list_offset = getFormatListOffset(self.fixed().vendor_len);
+        const format_list_limit = getFormatListLimit(format_list_offset, self.fixed().format_count);
+
+        const screen_count = self.fixed().root_screen_count;
+        var screen_list = try allocator.alloc(Screen, screen_count);
+        var pointer_offset = format_list_limit;
+        for (0..screen_count) |i| {
+            var screen: *align(4) Screen = @alignCast(@ptrCast(self.buf.ptr + pointer_offset));
+            screen_list[i] = screen.*;
+            const depths = try screen.getAllowedDepths(allocator);
+            for (depths) |depth| {
+                pointer_offset += @sizeOf(ScreenDepth) + (@sizeOf(VisualType) * depth.visual_type_count);
+            }
+        }
+
+        return screen_list;
+    }
+
+    pub fn free_screens(self: @This()) void {
+        _ = self;
+        // TODO
+    }
 };
 
 pub fn rgb24To16(color: u24) u16 {

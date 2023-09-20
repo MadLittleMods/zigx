@@ -18,7 +18,8 @@ pub const Ids = struct {
     pub fn fg_gc(self: Ids) u32 { return self.base + 2; }
     pub fn pixmap(self: Ids) u32 { return self.base + 3; }
     // For the XRender extension part of this example
-    pub fn picture(self: Ids) u32 { return self.base + 4; }
+    pub fn picture_root(self: Ids) u32 { return self.base + 4; }
+    pub fn picture_window(self: Ids) u32 { return self.base + 5; }
 };
 
 // ZFormat
@@ -74,6 +75,11 @@ pub fn findMatchingPictureFormat(formats: []const x.render.PictureFormatInfo, de
     }
     return error.VisualTypeNotFound;
 }
+
+const RenderExtensionInfo = struct {
+    opcode: u8,
+    base_error_code: u8,
+};
 
 pub fn main() !u8 {
     try x.wsaStartup();
@@ -241,7 +247,7 @@ pub fn main() !u8 {
         try conn.send(&msg);
     }
     _ = try x.readOneMsg(conn.reader(), @alignCast(buf.nextReadBuffer()));
-    const opt_render_ext: ?struct { opcode: u8 } = blk: {
+    const opt_render_ext: ?RenderExtensionInfo = blk: {
         switch (x.serverMsgTaggedUnion(@alignCast(buf.double_buffer_ptr))) {
             .reply => |msg_reply| {
                 const msg: *x.ServerMsg.QueryExtension = @ptrCast(msg_reply);
@@ -250,14 +256,17 @@ pub fn main() !u8 {
                     break :blk null;
                 }
                 std.debug.assert(msg.present == 1);
-                std.log.info("RENDER extension: opcode={}", .{msg.major_opcode});
-                break :blk .{ .opcode = msg.major_opcode };
+                std.log.info("RENDER extension: opcode={} base_error_code={}", .{msg.major_opcode, msg.first_error});
+                std.log.info("RENDER extension: {}", .{msg});
+                break :blk .{
+                    .opcode = msg.major_opcode,
+                    .base_error_code = msg.first_error
+                };
             },
             else => |msg| {
                 std.log.err("expected a reply but got {}", .{msg});
                 return 1;
             },
-
         }
     };
     if (opt_render_ext) |render_ext| {
@@ -289,7 +298,6 @@ pub fn main() !u8 {
             },
         }
 
-        var matching_picture_format: x.render.PictureFormatInfo = undefined;
         {
             var msg: [x.render.query_pict_formats.len]u8 = undefined;
             x.render.query_pict_formats.serialize(&msg, render_ext.opcode);
@@ -297,36 +305,56 @@ pub fn main() !u8 {
         }
         const message_length = try x.readOneMsg(conn.reader(), @alignCast(buf.nextReadBuffer()));
         try checkMessageLengthFitsInBuffer(message_length, buffer_limit);
-        switch (x.serverMsgTaggedUnion(@alignCast(buf.double_buffer_ptr))) {
-            .reply => |msg_reply| {
-                const msg: *x.render.query_pict_formats.Reply = @ptrCast(msg_reply);
-                std.log.info("RENDER extension: pict formats num_formats={}, num_screens={}, num_depths={}, num_visuals={}", .{
-                    msg.num_formats,
-                    msg.num_screens,
-                    msg.num_depths,
-                    msg.num_visuals,
-                });
-                for(msg.getPictureFormats(), 0..) |format, i| {
-                    std.log.info("RENDER extension: pict format ({}) {any}", .{
-                        i,
-                        format,
+        const pict_formats_data: ?struct { matching_picture_format: x.render.PictureFormatInfo } = blk: {
+            switch (x.serverMsgTaggedUnion(@alignCast(buf.double_buffer_ptr))) {
+                .reply => |msg_reply| {
+                    const msg: *x.render.query_pict_formats.Reply = @ptrCast(msg_reply);
+                    std.log.info("RENDER extension: pict formats num_formats={}, num_screens={}, num_depths={}, num_visuals={}", .{
+                        msg.num_formats,
+                        msg.num_screens,
+                        msg.num_depths,
+                        msg.num_visuals,
                     });
-                }
-                matching_picture_format = try findMatchingPictureFormat(msg.getPictureFormats()[0..], depth);
-            },
-            else => |msg| {
-                std.log.err("expected a reply but got {}", .{msg});
-                return 1;
-            },
+                    for(msg.getPictureFormats(), 0..) |format, i| {
+                        std.log.info("RENDER extension: pict format ({}) {any}", .{
+                            i,
+                            format,
+                        });
+                    }
+                    break :blk .{
+                        .matching_picture_format = try findMatchingPictureFormat(msg.getPictureFormats()[0..], depth),
+                    };
+                },
+                else => |msg| {
+                    std.log.err("expected a reply but got {}", .{msg});
+                    return 1;
+                },
+            }
+        };
+        const matching_picture_format = pict_formats_data.?.matching_picture_format;
+
+        {
+            var msg: [x.render.create_picture.max_len]u8 = undefined;
+            const len = x.render.create_picture.serialize(&msg, render_ext.opcode, .{
+                .picture_id = ids.picture_root(),
+                .drawable_id = screen.root,
+                .format_id = matching_picture_format.picture_format_id,
+                .options = .{
+                    .subwindow_mode = .include_inferiors,
+                },
+            });
+            try conn.send(msg[0..len]);
         }
 
         {
             var msg: [x.render.create_picture.max_len]u8 = undefined;
             const len = x.render.create_picture.serialize(&msg, render_ext.opcode, .{
-                .picture_id = ids.picture(),
+                .picture_id = ids.picture_window(),
                 .drawable_id = ids.window(),
                 .format_id = matching_picture_format.picture_format_id,
-                .options = .{},
+                .options = .{
+                    .subwindow_mode = .include_inferiors,
+                },
             });
             try conn.send(msg[0..len]);
         }
@@ -363,7 +391,7 @@ pub fn main() !u8 {
             //buf.resetIfEmpty();
             switch (x.serverMsgTaggedUnion(@alignCast(data.ptr))) {
                 .err => |msg| {
-                    std.log.err("{}", .{msg});
+                    std.log.err("Received X error: {}", .{msg});
                     return 1;
                 },
                 .reply => |msg| {
@@ -410,6 +438,7 @@ pub fn main() !u8 {
                         conn_setup_result.image_format,
                         ids,
                         font_dims,
+                        opt_render_ext,
                     );
                 },
                 .mapping_notify => |msg| {
@@ -441,6 +470,7 @@ fn render(
     image_format: ImageFormat,
     ids: Ids,
     font_dims: FontDims,
+    opt_render_ext: ?RenderExtensionInfo,
 ) !void {
     {
         var msg: [x.poly_fill_rectangle.getLen(1)]u8 = undefined;
@@ -600,6 +630,26 @@ fn render(
         }
     }
 
+    if (opt_render_ext) |render_ext| {
+        {
+            var msg: [x.render.composite.len]u8 = undefined;
+            x.render.composite.serialize(&msg, render_ext.opcode, .{
+                .picture_operation = .over,
+                .src_picture_id = ids.picture_root(),
+                .mask_picture_id = 0,
+                .dst_picture_id = ids.picture_window(),
+                .src_x = 0,
+                .src_y = 0,
+                .mask_x = 0,
+                .mask_y = 0,
+                .dst_x = 50,
+                .dst_y = 50,
+                .width = 100,
+                .height = 100,
+            });
+            try common.send(sock, &msg);
+        }
+    }
 }
 
 fn changeGcColor(sock: std.os.socket_t, gc_id: u32, color: u32) !void {

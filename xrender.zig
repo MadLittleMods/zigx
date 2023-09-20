@@ -48,6 +48,15 @@ pub const ExtOpcode = enum(u8) {
     // create_conical_gradient = 36,
 };
 
+pub const ErrorCode = enum(u8) {
+    PictFormat = 0,
+    Picture = 1,
+    PictOp = 2,
+    GlyphSet = 3,
+    Glyph = 4,
+    _, // allow unknown errors
+};
+
 
 // Disjoint* and Conjoint* are new in version 0.2
 // PDF blend modes are new in version 0.11
@@ -296,6 +305,8 @@ pub const composite = struct {
     pub const len =
               2 // extension and command opcodes
             + 2 // request length
+            + 1 // picture operation
+            + 3 // padding
             + 4 // src_picture_id
             + 4 // mask_picture_id
             + 4 // dst_picture_id
@@ -326,7 +337,7 @@ pub const composite = struct {
         buf[0] = ext_opcode;
         buf[1] = @intFromEnum(ExtOpcode.composite);
         x.writeIntNative(u16, buf + 2, len >> 2);
-        x.writeIntNative(u8, buf + 4, args.picture_operation);
+        buf[4] = @intFromEnum(args.picture_operation);
         // 3 bytes of padding
         x.writeIntNative(u32, buf + 8, args.src_picture_id);
         x.writeIntNative(u32, buf + 12, args.mask_picture_id);
@@ -337,7 +348,7 @@ pub const composite = struct {
         x.writeIntNative(i16, buf + 26, args.mask_y);
         x.writeIntNative(i16, buf + 28, args.dst_y);
         x.writeIntNative(i16, buf + 30, args.dst_y);
-        x.writeIntNative(u16, buf + 28, args.width);
-        x.writeIntNative(u16, buf + 30, args.height);
+        x.writeIntNative(u16, buf + 32, args.width);
+        x.writeIntNative(u16, buf + 34, args.height);
     }
 };

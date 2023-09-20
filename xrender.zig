@@ -344,7 +344,7 @@ pub const composite = struct {
         x.writeIntNative(u32, buf + 16, args.dst_picture_id);
         x.writeIntNative(i16, buf + 20, args.src_x);
         x.writeIntNative(i16, buf + 22, args.src_y);
-        x.writeIntNative(i16, buf + 24, args.mask_y);
+        x.writeIntNative(i16, buf + 24, args.mask_x);
         x.writeIntNative(i16, buf + 26, args.mask_y);
         x.writeIntNative(i16, buf + 28, args.dst_x);
         x.writeIntNative(i16, buf + 30, args.dst_y);

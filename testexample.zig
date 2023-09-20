@@ -17,6 +17,8 @@ pub const Ids = struct {
     pub fn bg_gc(self: Ids) u32 { return self.base + 1; }
     pub fn fg_gc(self: Ids) u32 { return self.base + 2; }
     pub fn pixmap(self: Ids) u32 { return self.base + 3; }
+    // For the XRender extension part of this example
+    pub fn picture(self: Ids) u32 { return self.base + 4; }
 };
 
 // ZFormat
@@ -56,6 +58,23 @@ fn getImageFormat(
     };
 }
 
+fn checkMessageLengthFitsInBuffer(message_length: usize, buffer_limit: usize) !void {
+    if(message_length > buffer_limit) {
+        std.debug.panic("Reply is bigger than our buffer (data corruption will ensue) {} > {}. In order to fix, increase the buffer size.", .{
+            message_length,
+            buffer_limit,
+        });
+    }
+}
+
+pub fn findMatchingPictureFormat(formats: []const x.render.PictureFormatInfo, desired_depth: u8) !x.render.PictureFormatInfo {
+    for (formats) |format| {
+        if (format.depth != desired_depth) continue;
+        return format;
+    }
+    return error.VisualTypeNotFound;
+}
+
 pub fn main() !u8 {
     try x.wsaStartup();
     const conn = try common.connect(allocator);
@@ -86,19 +105,22 @@ pub fn main() !u8 {
         inline for (@typeInfo(@TypeOf(screen.*)).Struct.fields) |field| {
             std.log.debug("SCREEN 0| {s}: {any}", .{field.name, @field(screen, field.name)});
         }
+        const depth = screen.root_depth;
         break :blk .{
             .screen = screen,
+            .depth = depth,
             .image_format = getImageFormat(
                 image_endian,
                 formats,
-                screen.root_depth,
+                depth,
             ) catch |err| {
-                std.log.err("can't resolve root depth {} format: {s}", .{screen.root_depth, @errorName(err)});
+                std.log.err("can't resolve root depth {} format: {s}", .{depth, @errorName(err)});
                 return 0xff;
             },
         };
     };
     const screen = conn_setup_result.screen;
+    const depth = conn_setup_result.depth;
 
     // TODO: maybe need to call conn.setup.verify or something?
 
@@ -108,7 +130,7 @@ pub fn main() !u8 {
         const len = x.create_window.serialize(&msg_buf, .{
             .window_id = ids.window(),
             .parent_window_id = screen.root,
-            .depth = 0, // we don't care, just inherit from the parent
+            .depth = depth,
             .x = 0, .y = 0,
             .width = window_width, .height = window_height,
             .border_width = 0, // TODO: what is this?
@@ -116,7 +138,7 @@ pub fn main() !u8 {
             .visual_id = screen.root_visual,
         }, .{
 //            .bg_pixmap = .copy_from_parent,
-            .bg_pixel = x.rgb24To(0xbbccdd, screen.root_depth),
+            .bg_pixel = x.rgb24To(0xbbccdd, depth),
 //            //.border_pixmap =
 //            .border_pixel = 0x01fa8ec9,
 //            .bit_gravity = .north_west,
@@ -167,7 +189,7 @@ pub fn main() !u8 {
             .drawable_id = screen.root,
         }, .{
             .background = screen.black_pixel,
-            .foreground = x.rgb24To(0xffaadd, screen.root_depth),
+            .foreground = x.rgb24To(0xffaadd, depth),
             // prevent NoExposure events when we send CopyArea
             .graphics_exposures = false,
         });
@@ -184,12 +206,13 @@ pub fn main() !u8 {
     }
 
     const double_buf = try x.DoubleBuffer.init(
-        std.mem.alignForward(usize, 1000, std.mem.page_size),
+        std.mem.alignForward(usize, 8000, std.mem.page_size),
         .{ .memfd_name = "ZigX11DoubleBuffer" },
     );
     defer double_buf.deinit(); // not necessary but good to test
     std.log.info("read buffer capacity is {}", .{double_buf.half_len});
     var buf = double_buf.contiguousReadBuffer();
+    const buffer_limit = buf.half_len;
 
     const font_dims: FontDims = blk: {
         _ = try x.readOneMsg(conn.reader(), @alignCast(buf.nextReadBuffer()));
@@ -265,6 +288,48 @@ pub fn main() !u8 {
                 return 1;
             },
         }
+
+        var matching_picture_format: x.render.PictureFormatInfo = undefined;
+        {
+            var msg: [x.render.query_pict_formats.len]u8 = undefined;
+            x.render.query_pict_formats.serialize(&msg, render_ext.opcode);
+            try conn.send(&msg);
+        }
+        const message_length = try x.readOneMsg(conn.reader(), @alignCast(buf.nextReadBuffer()));
+        try checkMessageLengthFitsInBuffer(message_length, buffer_limit);
+        switch (x.serverMsgTaggedUnion(@alignCast(buf.double_buffer_ptr))) {
+            .reply => |msg_reply| {
+                const msg: *x.render.query_pict_formats.Reply = @ptrCast(msg_reply);
+                std.log.info("RENDER extension: pict formats num_formats={}, num_screens={}, num_depths={}, num_visuals={}", .{
+                    msg.num_formats,
+                    msg.num_screens,
+                    msg.num_depths,
+                    msg.num_visuals,
+                });
+                for(msg.getPictureFormats(), 0..) |format, i| {
+                    std.log.info("RENDER extension: pict format ({}) {any}", .{
+                        i,
+                        format,
+                    });
+                }
+                matching_picture_format = try findMatchingPictureFormat(msg.getPictureFormats()[0..], depth);
+            },
+            else => |msg| {
+                std.log.err("expected a reply but got {}", .{msg});
+                return 1;
+            },
+        }
+
+        {
+            var msg: [x.render.create_picture.max_len]u8 = undefined;
+            const len = x.render.create_picture.serialize(&msg, render_ext.opcode, .{
+                .picture_id = ids.picture(),
+                .drawable_id = ids.window(),
+                .format_id = matching_picture_format.picture_format_id,
+                .options = .{},
+            });
+            try conn.send(msg[0..len]);
+        }
     }
 
     {
@@ -305,6 +370,12 @@ pub fn main() !u8 {
                     std.log.info("todo: handle a reply message {}", .{msg});
                     return error.TodoHandleReplyMessage;
                 },
+                .ge_generic => |msg| {
+                    // TODO: When handling a generic message, we need to get the rest of the event out
+                    // of the buffer since we've only read the first 32 bytes so far.
+                    std.log.info("todo: handle a GE generic event {}", .{msg});
+                    return error.TodoHandleReplyMessage;
+                },
                 .key_press => |msg| {
                     std.log.info("key_press: keycode={}", .{msg.keycode});
                 },
@@ -335,7 +406,7 @@ pub fn main() !u8 {
                     std.log.info("expose: {}", .{msg});
                     try render(
                         conn.sock,
-                        screen.root_depth,
+                        depth,
                         conn_setup_result.image_format,
                         ids,
                         font_dims,

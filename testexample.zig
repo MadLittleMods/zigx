@@ -399,8 +399,6 @@ pub fn main() !u8 {
                     return error.TodoHandleReplyMessage;
                 },
                 .ge_generic => |msg| {
-                    // TODO: When handling a generic message, we need to get the rest of the event out
-                    // of the buffer since we've only read the first 32 bytes so far.
                     std.log.info("todo: handle a GE generic event {}", .{msg});
                     return error.TodoHandleReplyMessage;
                 },

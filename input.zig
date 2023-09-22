@@ -243,7 +243,7 @@ pub fn main() !u8 {
                     // just always do another render, it's *probably* needed
                     try render(&msg_sequencer, window_id, bg_gc_id, fg_gc_id, font_dims, state);
                 },
-                .ge_generic => |msg| {
+                .generic_extension_event => |msg| {
                     std.log.info("todo: handle a GE generic event {}", .{msg});
                     return error.TodoHandleReplyMessage;
                 },

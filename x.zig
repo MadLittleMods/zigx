@@ -1897,7 +1897,7 @@ pub const EventCode = enum(u8) {
 pub const ErrorKind = enum(u8) { err = 0 };
 pub const ReplyKind = enum(u8) { reply = 1 };
     // From the X Generic Event Extension
-pub const GenericEventKind = enum(u8) { ge_generic = 35 };
+pub const GenericEventKind = enum(u8) { generic_extension_event = 35 };
 pub const ServerMsgKind = enum(u8) {
     err = @intFromEnum(ErrorKind.err),
     reply = @intFromEnum(ReplyKind.reply),
@@ -1934,7 +1934,7 @@ pub const ServerMsgKind = enum(u8) {
     colormap_notify   = @intFromEnum(EventCode.colormap_notify),
     client_message    = @intFromEnum(EventCode.client_message),
     mapping_notify    = @intFromEnum(EventCode.mapping_notify),
-    ge_generic        = @intFromEnum(GenericEventKind.ge_generic),
+    generic_extension_event        = @intFromEnum(GenericEventKind.generic_extension_event),
     _,
 };
 
@@ -1956,7 +1956,7 @@ pub const ServerMsgTaggedUnion = union(enum) {
     reparent_notify: *align(4) Event.ReparentNotify,
     configure_notify: *align(4) Event.ConfigureNotify,
     mapping_notify: *align(4) Event.MappingNotify,
-    ge_generic: *align(4) ServerMsg.GeGenericEvent,
+    generic_extension_event: *align(4) ServerMsg.GenericExtensionEvent,
 };
 pub fn serverMsgTaggedUnion(msg_ptr: [*]align(4) u8) ServerMsgTaggedUnion {
     switch (@as(ServerMsgKind, @enumFromInt(0x7f & msg_ptr[0]))) {
@@ -1976,7 +1976,7 @@ pub fn serverMsgTaggedUnion(msg_ptr: [*]align(4) u8) ServerMsgTaggedUnion {
         .reparent_notify => return .{ .reparent_notify = @ptrCast(msg_ptr) },
         .configure_notify => return .{ .configure_notify = @ptrCast(msg_ptr) },
         .mapping_notify => return .{ .mapping_notify = @ptrCast(msg_ptr) },
-        .ge_generic => return .{ .ge_generic = @ptrCast(msg_ptr) },
+        .generic_extension_event => return .{ .generic_extension_event = @ptrCast(msg_ptr) },
         else => return .{ .unhandled = @ptrCast(msg_ptr) },
     }
 }
@@ -1986,7 +1986,7 @@ pub const ServerMsg = extern union {
     generic: Generic,
     err: Error,
     reply: Reply,
-    generic_event: GeGenericEvent,
+    generic_event: GenericExtensionEvent,
     query_font: QueryFont,
     query_text_extents: QueryTextExtents,
     list_fonts: ListFonts,
@@ -2009,7 +2009,7 @@ pub const ServerMsg = extern union {
     comptime { std.debug.assert(@sizeOf(Reply) == 32); }
 
     // From the X Generic Event Extension
-    pub const GeGenericEvent = extern struct {
+    pub const GenericExtensionEvent = extern struct {
         response_type: GenericEventKind,
         // The major opcode of the extension.
         ext_opcode: u8,
@@ -2020,7 +2020,7 @@ pub const ServerMsg = extern union {
         event_opcode: u16,
         reserve_min: [22]u8,
     };
-    comptime { std.debug.assert(@sizeOf(GeGenericEvent) == 32); }
+    comptime { std.debug.assert(@sizeOf(GenericExtensionEvent) == 32); }
 
     comptime { std.debug.assert(@sizeOf(Error) == 32); }
     pub const Error = extern struct {
@@ -2361,9 +2361,9 @@ pub fn parseMsgLen(buf: [32]u8) u32 {
             return calculated_msg_length;
         },
         2 ... 34 => return 32,
-        @intFromEnum(ServerMsgKind.ge_generic) => {
-            const start_offset = @offsetOf(ServerMsg.GeGenericEvent, "word_len");
-            const end_offset = start_offset + @sizeOf(std.meta.FieldType(ServerMsg.GeGenericEvent, .word_len));
+        @intFromEnum(ServerMsgKind.generic_extension_event) => {
+            const start_offset = @offsetOf(ServerMsg.GenericExtensionEvent, "word_len");
+            const end_offset = start_offset + @sizeOf(std.meta.FieldType(ServerMsg.GenericExtensionEvent, .word_len));
             const calculated_msg_length = 32 + (4 * readIntNative(u32, buf[start_offset..end_offset]));
             return calculated_msg_length;
         },

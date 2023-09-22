@@ -398,7 +398,7 @@ pub fn main() !u8 {
                     std.log.info("todo: handle a reply message {}", .{msg});
                     return error.TodoHandleReplyMessage;
                 },
-                .ge_generic => |msg| {
+                .generic_extension_event => |msg| {
                     std.log.info("todo: handle a GE generic event {}", .{msg});
                     return error.TodoHandleReplyMessage;
                 },

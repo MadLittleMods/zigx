@@ -193,6 +193,9 @@ pub fn main() !u8 {
     }
     var state = State { };
 
+    // Kick this off right-away so the XInputExtension is ready when we need it
+    try queryInputExtension(&msg_sequencer, &state);
+
     while (true) {
         {
             const recv_buf = buf.nextReadBuffer();
@@ -237,6 +240,10 @@ pub fn main() !u8 {
                     }
                     // just always do another render, it's *probably* needed
                     try render(&msg_sequencer, window_id, bg_gc_id, fg_gc_id, font_dims, state);
+                },
+                .ge_generic => |msg| {
+                    std.log.info("todo: handle a GE generic event {}", .{msg});
+                    return error.TodoHandleReplyMessage;
                 },
                 .key_press => |msg| {
                     var do_render = true;
@@ -351,19 +358,19 @@ fn handleReply(
         .enabled => {},
     }
 
-    switch (state.disable_input_device) {
-        .initial, .extension_missing, .no_pointer_to_disable, .disabled => {},
-        .query_extension => |sequence| if (msg.sequence == sequence) {
+    switch (state.query_input_extension) {
+        .initial, .extension_missing, .enabled => {},
+        .query_extension => |info| if (msg.sequence == info.sequence) {
             const msg_ext: *const x.ServerMsg.QueryExtension = @ptrCast(msg);
             if (msg_ext.present == 0) {
-                state.disable_input_device = .extension_missing;
+                state.query_input_extension = .extension_missing;
             } else {
                 std.debug.assert(msg_ext.present == 1);
                 const name = comptime x.Slice(u16, [*]const u8).initComptime("XInputExtension");
                 var get_version_msg: [x.inputext.get_extension_version.getLen(name.len)]u8 = undefined;
                 x.inputext.get_extension_version.serialize(&get_version_msg, msg_ext.major_opcode, name);
                 try msg_sequencer.send(&get_version_msg, 1);
-                state.disable_input_device = .{ .get_version = .{
+                state.query_input_extension = .{ .get_version = .{
                     .sequence = msg_sequencer.last_sequence,
                     .ext_opcode = msg_ext.major_opcode,
                 }};
@@ -385,15 +392,17 @@ fn handleReply(
                 std.debug.panic("XInputExtension major version is {} but need {}", .{major, 2});
             if (minor < 3)
                 std.debug.panic("XInputExtension minor version is {} but I've only tested >= {}", .{minor, 3});
-            var list_devices_msg: [x.inputext.list_input_devices.len]u8 = undefined;
-            x.inputext.list_input_devices.serialize(&list_devices_msg, info.ext_opcode);
-            try msg_sequencer.send(&list_devices_msg, 1);
-            state.disable_input_device = .{ .list_devices = .{
-                .sequence = msg_sequencer.last_sequence,
+
+            state.query_input_extension = .{ .enabled = .{
                 .ext_opcode = info.ext_opcode,
             }};
+
             return true; // handled
         },
+    }
+
+    switch (state.disable_input_device) {
+        .initial, .no_pointer_to_disable, .extension_not_available_yet, .extension_missing, .disabled => {},
         .list_devices => |state_info| if (msg.sequence == state_info.sequence) {
             const devices_reply: *const x.inputext.ListInputDevicesReply = @ptrCast(msg);
             var input_info_it = devices_reply.inputInfoIterator();
@@ -562,19 +571,52 @@ fn createWindow(msg_sequencer: *MsgSequencer, parent_window_id: u32, window_id: 
     }
 }
 
-fn disableInputDevice(msg_sequencer: *MsgSequencer, state: *State) !void {
-    const already_fmt = "disable input device already requested, {s}...";
-    switch (state.disable_input_device) {
-        .initial, .no_pointer_to_disable => {
+fn queryInputExtension(msg_sequencer: *MsgSequencer, state: *State) !void {
+    const already_fmt = "already working on querying the input extension, {s}...";
+    switch (state.query_input_extension) {
+        .initial => {
             const name = comptime x.Slice(u16, [*]const u8).initComptime("XInputExtension");
             var msg: [x.query_extension.getLen(name.len)]u8 = undefined;
             x.query_extension.serialize(&msg, name);
             try msg_sequencer.send(&msg, 1);
-            state.disable_input_device = .{ .query_extension = msg_sequencer.last_sequence };
+            state.query_input_extension = .{ .query_extension = .{
+                .sequence = msg_sequencer.last_sequence,
+            }};
         },
-        .query_extension => std.log.info(already_fmt, .{"querying extension"}),
-        .extension_missing => std.log.info("can't disable input device, XInputExtension is missing", .{}),
-        .get_version => std.log.info(already_fmt, .{"getting extension version"}),
+        .query_extension => std.log.info(already_fmt, .{"querying XInputExtension"}),
+        .extension_missing => std.log.info("XInputExtension is missing", .{}),
+        .get_version => std.log.info(already_fmt, .{"getting XInputExtension version"}),
+        .enabled => std.log.info(already_fmt, .{"XInputExtension is enabled"}),
+    }
+}
+
+fn disableInputDevice(msg_sequencer: *MsgSequencer, state: *State) !void {
+    const already_fmt = "disable input device already requested, {s}...";
+    const extension_missing_fmt = "can't disable input device, XInputExtension is missing";
+    switch (state.disable_input_device) {
+        // Transition from initial or someone who previously failed to disable the
+        // pointer because they had no pointer at the time.
+        .initial, .no_pointer_to_disable, .extension_not_available_yet => {
+            if(state.query_input_extension == .extension_missing) {
+                std.log.info(extension_missing_fmt, .{});
+                state.disable_input_device = .extension_missing;
+                return;
+            } else if(state.query_input_extension != .enabled) {
+                std.log.info("can't disable input device, we haven't checked for the XInputExtension yet (just wait a second and try again).", .{});
+                state.disable_input_device = .extension_not_available_yet;
+                return;
+            }
+
+            const input_ext_opcode = state.query_input_extension.enabled.ext_opcode;
+            var list_devices_msg: [x.inputext.list_input_devices.len]u8 = undefined;
+            x.inputext.list_input_devices.serialize(&list_devices_msg, input_ext_opcode);
+            try msg_sequencer.send(&list_devices_msg, 1);
+            state.disable_input_device = .{ .list_devices = .{
+                .sequence = msg_sequencer.last_sequence,
+                .ext_opcode = input_ext_opcode,
+            }};
+        },
+        .extension_missing => std.log.info(extension_missing_fmt, .{}),
         .list_devices => std.log.info(already_fmt, .{"getting input devices"}),
         .intern_atom => std.log.info(already_fmt, .{"interning atom"}),
         .get_prop => std.log.info(already_fmt, .{"getting property"}),
@@ -606,14 +648,26 @@ const State = struct {
         enabled: struct { confined: bool },
     } = .disabled,
     confine_grab: bool = false,
-    disable_input_device: union(enum) {
+
+    query_input_extension: union(enum) {
         initial: void,
-        query_extension: u16,
+        query_extension: struct {
+            sequence: u16,
+        },
         extension_missing: void,
         get_version: struct {
             sequence: u16,
             ext_opcode: u8,
         },
+        enabled: struct {
+            ext_opcode: u8,
+        },
+    } = .initial,
+
+    disable_input_device: union(enum) {
+        initial: void,
+        extension_not_available_yet: void,
+        extension_missing: void,
         list_devices: struct {
             sequence: u16,
             ext_opcode: u8,
@@ -774,9 +828,8 @@ fn render(
     {
         const suffix: []const u8 = switch (state.disable_input_device) {
             .initial => "",
-            .query_extension => " (query extension sent...)",
+            .extension_not_available_yet => " (waiting for XInputExtension...)",
             .extension_missing => " (XInputExtension is missing)",
-            .get_version => " (getting extension version...)",
             .list_devices => " (listing input devices...)",
             .no_pointer_to_disable => " (failed: no pointer to disable)",
             .intern_atom => " (interning atom...)",

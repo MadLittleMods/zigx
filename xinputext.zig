@@ -71,6 +71,7 @@ pub const ExtEventCode = enum(u8) {
     gesture_swipe_end = 32,
 };
 
+// Abbreviated as `FP3232` in X Input extension protocol documentation.
 pub const fixed_point_32_32 = extern struct {
     integral: i32,
     fractional: u32,
@@ -78,15 +79,14 @@ pub const fixed_point_32_32 = extern struct {
 
 pub const ExtEvent = struct {
     pub const RawButtonPress = extern struct {
-        // response_type: x.GenericEventKind,
-        // // The major opcode of the extension.
-        // ext_opcode: u8,
-        // sequence: u16,
-        // // The length field specifies the number of 4-byte blocks after the
-        // // initial 32 bytes. If length is 0, the event is 32 bytes long.
-        // word_len: u32, // length in 4-byte words
-        // event_opcode: u16,
-        unused: u16,
+        response_type: x.GenericEventKind,
+        /// The major opcode of the extension.
+        ext_opcode: u8,
+        sequence: u16,
+        /// The length field specifies the number of 4-byte blocks after the
+        /// initial 32 bytes. If length is 0, the event is 32 bytes long.
+        word_len: u32, // length in 4-byte words
+        event_opcode: u16,
         device_id: u16,
         timestamp: u32,
 
@@ -94,11 +94,11 @@ pub const ExtEvent = struct {
         source_device_id: u16,
         valuators_len: u16,
         pointer_event_flags: u32,
-        unused2: u32, // padding
-        unused_boundary: [32]u8, // padding
-        valuators_mask: u32,
-        axis_values: fixed_point_32_32,
-        axis_values_raw: fixed_point_32_32,
+        // TODO: Handle the rest
+        // unused2: u32, // padding
+        // valuators_mask: u32,
+        // axis_values: fixed_point_32_32,
+        // axis_values_raw: fixed_point_32_32,
     };
 };
 
@@ -108,10 +108,10 @@ pub const GenericExtensionEventTaggedUnion = union(enum) {
 };
 
 pub fn genericExtensionEventTaggedUnion(msg_ptr: [*]align(4) u8) GenericExtensionEventTaggedUnion {
-    const start_of_extension_event_ptr = msg_ptr + 8;
+    // `msg_ptr[8]` points at the `event_opcode` part of the event.
     switch (@as(ExtEventCode, @enumFromInt(0x7f & msg_ptr[8]))) {
-        .raw_button_press => return .{ .raw_button_press = @ptrCast(start_of_extension_event_ptr) },
-        else => return .{ .unhandled = @ptrCast(start_of_extension_event_ptr) },
+        .raw_button_press => return .{ .raw_button_press = @ptrCast(msg_ptr) },
+        else => return .{ .unhandled = @ptrCast(msg_ptr) },
     }
 }
 

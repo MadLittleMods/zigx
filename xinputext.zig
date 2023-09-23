@@ -36,6 +36,85 @@ pub const ExtOpcode = enum(u8) {
     get_property = 59,
 };
 
+pub const ExtEventCode = enum(u8) {
+    device_changed = 1,
+    key_press = 2,
+    key_release = 3,
+    button_press = 4,
+    button_release = 5,
+    motion = 6,
+    enter = 7,
+    leave = 8,
+    focus_in = 9,
+    focus_out = 10,
+    hierarchy = 11,
+    property = 12,
+    raw_key_press = 13,
+    raw_key_release = 14,
+    raw_button_press = 15,
+    raw_button_release = 16,
+    raw_motion = 17,
+    touch_begin = 18,
+    touch_update = 19,
+    touch_end = 20,
+    touch_ownership = 21,
+    raw_touch_begin = 22,
+    raw_touch_update = 23,
+    raw_touch_end = 24,
+    barrier_hit = 25,
+    barrier_leave = 26,
+    gesture_pinch_begin = 27,
+    gesture_pinch_update = 28,
+    gesture_pinch_end = 29,
+    gesture_swipe_begin = 30,
+    gesture_swipe_update = 31,
+    gesture_swipe_end = 32,
+};
+
+pub const fixed_point_32_32 = extern struct {
+    integral: i32,
+    fractional: u32,
+};
+
+pub const ExtEvent = struct {
+    pub const RawButtonPress = extern struct {
+        // response_type: x.GenericEventKind,
+        // // The major opcode of the extension.
+        // ext_opcode: u8,
+        // sequence: u16,
+        // // The length field specifies the number of 4-byte blocks after the
+        // // initial 32 bytes. If length is 0, the event is 32 bytes long.
+        // word_len: u32, // length in 4-byte words
+        // event_opcode: u16,
+        unused: u16,
+        device_id: u16,
+        timestamp: u32,
+
+        detail: u32,
+        source_device_id: u16,
+        valuators_len: u16,
+        pointer_event_flags: u32,
+        unused2: u32, // padding
+        unused_boundary: [32]u8, // padding
+        valuators_mask: u32,
+        axis_values: fixed_point_32_32,
+        axis_values_raw: fixed_point_32_32,
+    };
+};
+
+pub const GenericExtensionEventTaggedUnion = union(enum) {
+    unhandled: *align(4) x.ServerMsg.GenericExtensionEvent,
+    raw_button_press: *align(4) ExtEvent.RawButtonPress,
+};
+
+pub fn genericExtensionEventTaggedUnion(msg_ptr: [*]align(4) u8) GenericExtensionEventTaggedUnion {
+    const start_of_extension_event_ptr = msg_ptr + 8;
+    switch (@as(ExtEventCode, @enumFromInt(0x7f & msg_ptr[8]))) {
+        .raw_button_press => return .{ .raw_button_press = @ptrCast(start_of_extension_event_ptr) },
+        else => return .{ .unhandled = @ptrCast(start_of_extension_event_ptr) },
+    }
+}
+
 pub const get_extension_version = struct {
     pub const non_list_len =
               2 // extension and command opcodes

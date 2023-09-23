@@ -16,6 +16,17 @@ const Key = enum {
 const bg_color = 0x231a20;
 const fg_color = 0xadccfa;
 
+/// X server extension info.
+pub const ExtensionInfo = struct {
+    extension_name: []const u8,
+    /// The extension opcode is used to identify which X extension a given request is
+    /// intended for (used as the major opcode). This essentially namespaces any extension
+    /// requests. The extension differentiates its own requests by using a minor opcode.
+    opcode: u8,
+    /// Extension error codes are added on top of this base error code.
+    base_error_code: u8,
+};
+
 pub fn main() !u8 {
     try x.wsaStartup();
     const conn = try common.connect(allocator);
@@ -244,8 +255,17 @@ pub fn main() !u8 {
                     try render(&msg_sequencer, window_id, bg_gc_id, fg_gc_id, font_dims, state);
                 },
                 .generic_extension_event => |msg| {
-                    std.log.info("todo: handle a GE generic event {}", .{msg});
-                    return error.TodoHandleReplyMessage;
+                    if(state.query_input_extension == .enabled and msg.ext_opcode == state.query_input_extension.enabled.input_extension_info.opcode) {
+                        switch (x.inputext.genericExtensionEventTaggedUnion(@alignCast(data.ptr))) {
+                            .raw_button_press => |extension_msg| {
+                                std.log.info("TODO: handle a raw_button_press {}", .{extension_msg});
+                            },
+                            else => unreachable, // We did not register for these events so we should not see them
+                        }
+                    } else {
+                        std.log.info("TODO: handle a GE generic event {}", .{msg});
+                        return error.TodoHandleGenericExtensionEvent;
+                    }
                 },
                 .key_press => |msg| {
                     var do_render = true;
@@ -323,7 +343,7 @@ pub fn main() !u8 {
                 .map_notify,
                 .reparent_notify,
                 .configure_notify,
-                => unreachable, // did not register for these
+                => unreachable, // We did not register for these events so we should not see them
             }
         }
     }
@@ -377,18 +397,19 @@ fn handleReply(
                 try msg_sequencer.send(&get_version_msg, 1);
 
                 // Useful for debugging
-                std.log.info("{s} extension: opcode={} base_error_code={} base_event_code={}", .{
+                std.log.info("{s} extension: opcode={} base_error_code={}", .{
                     name,
                     msg_ext.major_opcode,
                     msg_ext.first_error,
-                    msg_ext.first_event,
                 });
 
                 state.query_input_extension = .{ .get_version = .{
                     .sequence = msg_sequencer.last_sequence,
-                    .ext_opcode = msg_ext.major_opcode,
-                    .base_error_code = msg_ext.first_error,
-                    .base_event_code = msg_ext.first_event,
+                    .input_extension_info = .{
+                        .extension_name = "XInputExtension",
+                        .opcode = msg_ext.major_opcode,
+                        .base_error_code = msg_ext.first_error,
+                    },
                 }};
             }
             return true; // handled
@@ -410,9 +431,7 @@ fn handleReply(
                 std.debug.panic("XInputExtension minor version is {} but I've only tested >= {}", .{minor, 3});
 
             state.query_input_extension = .{ .enabled = .{
-                .ext_opcode = info.ext_opcode,
-                .base_error_code = info.base_error_code,
-                .base_event_code = info.base_event_code,
+                .input_extension_info = info.input_extension_info,
             }};
 
             return true; // handled
@@ -632,7 +651,7 @@ fn listenToRawEvents(msg_sequencer: *MsgSequencer, state: *State, root_window_id
                 }
             };
 
-            const input_ext_opcode = state.query_input_extension.enabled.ext_opcode;
+            const input_ext_opcode = state.query_input_extension.enabled.input_extension_info.opcode;
             var message_buffer: [x.inputext.select_events.getLen(@as(u16, @intCast(event_masks.len)))]u8 = undefined;
             const len = x.inputext.select_events.serialize(&message_buffer, input_ext_opcode, .{
                 .window_id = root_window_id,
@@ -664,7 +683,7 @@ fn disableInputDevice(msg_sequencer: *MsgSequencer, state: *State) !void {
                 return;
             }
 
-            const input_ext_opcode = state.query_input_extension.enabled.ext_opcode;
+            const input_ext_opcode = state.query_input_extension.enabled.input_extension_info.opcode;
             var list_devices_msg: [x.inputext.list_input_devices.len]u8 = undefined;
             x.inputext.list_input_devices.serialize(&list_devices_msg, input_ext_opcode);
             try msg_sequencer.send(&list_devices_msg, 1);
@@ -714,14 +733,10 @@ const State = struct {
         extension_missing: void,
         get_version: struct {
             sequence: u16,
-            ext_opcode: u8,
-            base_error_code: u8,
-            base_event_code: u8,
+            input_extension_info: ExtensionInfo,
         },
         enabled: struct {
-            ext_opcode: u8,
-            base_error_code: u8,
-            base_event_code: u8,
+            input_extension_info: ExtensionInfo,
         },
     } = .initial,
 

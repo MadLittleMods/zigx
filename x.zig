@@ -1986,7 +1986,7 @@ pub const ServerMsg = extern union {
     generic: Generic,
     err: Error,
     reply: Reply,
-    generic_event: GenericExtensionEvent,
+    generic_extension_event: GenericExtensionEvent,
     query_font: QueryFont,
     query_text_extents: QueryTextExtents,
     list_fonts: ListFonts,

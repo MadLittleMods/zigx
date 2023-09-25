@@ -32,6 +32,7 @@ pub const ExtOpcode = enum(u8) {
     change_device_key_mapping = 25,
     get_device_modifier_mapping = 26,
     select_events = 46,
+    query_version = 47,
     change_property = 57,
     get_property = 59,
 };

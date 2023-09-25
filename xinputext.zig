@@ -141,6 +141,53 @@ pub const get_extension_version = struct {
         buf[6] = 0; // unused
         buf[7] = 0; // unused
     }
+    pub const Reply = extern struct {
+        response_type: x.ReplyKind,
+        unused_pad: u8,
+        sequence: u16,
+        word_len: u32,
+        // The `xi_reply_type` field is listed in the XCB XML protocol definitions but I
+        // don't see it in actual scenarios. It's also not part of the `libxi` ->
+        // `xGetExtensionVersionReply` definition.
+        //
+        //xi_reply_type: u8,
+        major_version: u16,
+        minor_version: u16,
+        present: bool,
+        reserved: [19]u8,
+    };
+    comptime { std.debug.assert(@sizeOf(Reply) == 32); }
+};
+
+pub const query_version = struct {
+    pub const len =
+              2 // extension and command opcodes
+            + 2 // request length
+            + 2 // client major version
+            + 2 // client minor version
+    ;
+    pub const Args = struct {
+        major_version: u16,
+        minor_version: u16,
+    };
+    pub fn serialize(buf: [*]u8, ext_opcode: u8, args: Args) void {
+        buf[0] = ext_opcode;
+        buf[1] = @intFromEnum(ExtOpcode.query_version);
+        std.debug.assert(len & 0x3 == 0);
+        x.writeIntNative(u16, buf + 2, len >> 2);
+        x.writeIntNative(u16, buf + 4, args.major_version);
+        x.writeIntNative(u16, buf + 6, args.minor_version);
+    }
+    pub const Reply = extern struct {
+        response_type: x.ReplyKind,
+        unused_pad: u8,
+        sequence: u16,
+        word_len: u32,
+        major_version: u16,
+        minor_version: u16,
+        reserved: [20]u8,
+    };
+    comptime { std.debug.assert(@sizeOf(Reply) == 32); }
 };
 
 pub const list_input_devices = struct {

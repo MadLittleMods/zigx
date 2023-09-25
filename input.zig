@@ -416,19 +416,17 @@ fn handleReply(
         },
         .get_version => |info| if (msg.sequence == info.sequence) {
             const opcode = msg.flexible;
-            const ptr: [*]const u8 = &msg.reserve_min;
-            const major = x.readIntNative(u16, ptr + 0);
-            const minor = x.readIntNative(u16, ptr + 2);
-            const present = msg.reserve_min[4];
+            const msg_ext: *const x.inputext.get_extension_version.Reply = @ptrCast(msg);
+            std.log.debug("get_extension_version returned {}", .{msg_ext});
             if (opcode != @intFromEnum(x.inputext.ExtOpcode.get_extension_version))
                 std.debug.panic("invalid opcode in reply {}, expected {}", .{
                     opcode, @intFromEnum(x.inputext.ExtOpcode.get_extension_version)});
-            if (present == 0)
+            if (!msg_ext.present)
                 std.debug.panic("XInputExtension is not present, but it was before?", .{});
-            if (major != 2)
-                std.debug.panic("XInputExtension major version is {} but need {}", .{major, 2});
-            if (minor < 3)
-                std.debug.panic("XInputExtension minor version is {} but I've only tested >= {}", .{minor, 3});
+            if (msg_ext.major_version != 2)
+                std.debug.panic("XInputExtension major version is {} but need {}", .{msg_ext.major_version, 2});
+            if (msg_ext.minor_version < 3)
+                std.debug.panic("XInputExtension minor version is {} but I've only tested >= {}", .{msg_ext.minor_version, 3});
 
             state.query_input_extension = .{ .enabled = .{
                 .input_extension_info = info.input_extension_info,

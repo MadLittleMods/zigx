@@ -676,6 +676,7 @@ fn render(
         }
     }
 
+
     if (opt_render_ext) |render_ext| {
         // Capture a small 100x100 screenshot of the top-left of the root window and
         // composite it onto our window.

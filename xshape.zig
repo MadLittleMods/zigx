@@ -35,13 +35,6 @@ pub const Ordering = enum(u8) {
     yx_banded = 1,
 };
 
-pub const Rectangle = struct {
-    x: u16,
-    y: u16,
-    width: u16,
-    height: u16,
-};
-
 pub const query_version = struct {
     pub const len =
               2 // extension and command opcodes
@@ -87,7 +80,7 @@ pub const rectangles = struct {
             + 2 // y offset
     ;
     pub fn getLen(number_of_rectangles: u16) u16 {
-        return non_list_len + (8 * number_of_rectangles);
+        return non_list_len + (@sizeOf(x.Rectangle) * number_of_rectangles);
     }
     pub const Args = struct {
         destination_window_id: u32,
@@ -96,7 +89,7 @@ pub const rectangles = struct {
         x_offset: i16,
         y_offset: i16,
         ordering: Ordering,
-        rectangles: []const Rectangle,
+        rectangles: []const x.Rectangle,
     };
     pub fn serialize(buf: [*]u8, ext_opcode: u8, args: Args) void {
         buf[0] = ext_opcode;
@@ -105,6 +98,18 @@ pub const rectangles = struct {
         x.writeIntNative(u16, buf + 2, len >> 2);
         x.writeIntNative(u8, buf + 4, args.operation);
         x.writeIntNative(u8, buf + 5, args.destination_kind);
-        x.writeIntNative(u8, buf + 6, args.destination_kind);
+        x.writeIntNative(u8, buf + 6, args.ordering);
+        buf[7] = 0; // unused
+        x.writeIntNative(u32, buf + 8, args.destination_window_id);
+        x.writeIntNative(i16, buf + 12, args.x_offset);
+        x.writeIntNative(i16, buf + 14, args.y_offset);
+        var current_offset: u16 = non_list_len;
+        for (rectangles) |rectangle| {
+            x.writeIntNative(i16, buf + current_offset + 0, rectangle.x);
+            x.writeIntNative(i16, buf + current_offset + 2, rectangle.y);
+            x.writeIntNative(u16, buf + current_offset + 4, rectangle.width);
+            x.writeIntNative(u16, buf + current_offset + 6, rectangle.height);
+            current_offset += @sizeOf(x.Rectangle);
+        }
     }
 };

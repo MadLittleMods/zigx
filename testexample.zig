@@ -301,6 +301,24 @@ pub fn main() !u8 {
         try conn.send(&msg);
     }
 
+    if (opt_shape_ext) |shape_ext| {
+        {
+            var msg: [x.shape.query_version.len]u8 = undefined;
+            x.shape.rectangles.serialize(&msg, shape_ext.opcode, .{
+                .destination_window_id = ids.window(),
+                .destination_kind = .input,
+                .operation = .set,
+                .x_offset = 0,
+                .y_offset = 0,
+                .ordering = .unsorted,
+                .rectangles = &[_]x.Rectangle{
+                    .{ .x = 10, .y = 10, .width = 50, .height = 50 },
+                },
+            });
+            try conn.send(&msg);
+        }
+    }
+
     while (true) {
         {
             const recv_buf = buf.nextReadBuffer();

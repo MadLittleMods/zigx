@@ -31,8 +31,8 @@ pub const Operation = enum(u8) {
 pub const Ordering = enum(u8) {
     unsorted = 0,
     y_sorted = 1,
-    yx_sorted = 1,
-    yx_banded = 1,
+    yx_sorted = 2,
+    yx_banded = 3,
 };
 
 pub const query_version = struct {
@@ -83,19 +83,21 @@ pub const rectangles = struct {
         rectangles: []const x.Rectangle,
     };
     pub fn serialize(buf: [*]u8, ext_opcode: u8, args: Args) void {
+        std.log.debug("asdf1 {any}", .{args.rectangles});
         buf[0] = ext_opcode;
         buf[1] = @intFromEnum(ExtOpcode.rectangles);
-        const len = getLen(args.rectangles.len);
+        const len = getLen(@intCast(args.rectangles.len));
         x.writeIntNative(u16, buf + 2, len >> 2);
-        x.writeIntNative(u8, buf + 4, args.operation);
-        x.writeIntNative(u8, buf + 5, args.destination_kind);
-        x.writeIntNative(u8, buf + 6, args.ordering);
+        buf[4] = @intFromEnum(args.operation);
+        buf[5] = @intFromEnum(args.destination_kind);
+        buf[6] = @intFromEnum( args.ordering);
         buf[7] = 0; // unused
         x.writeIntNative(u32, buf + 8, args.destination_window_id);
         x.writeIntNative(i16, buf + 12, args.x_offset);
         x.writeIntNative(i16, buf + 14, args.y_offset);
         var current_offset: u16 = non_list_len;
-        for (rectangles) |rectangle| {
+        std.log.debug("asdf3 {any}", .{args.rectangles});
+        for (args.rectangles) |rectangle| {
             x.writeIntNative(i16, buf + current_offset + 0, rectangle.x);
             x.writeIntNative(i16, buf + current_offset + 2, rectangle.y);
             x.writeIntNative(u16, buf + current_offset + 4, rectangle.width);

@@ -210,39 +210,18 @@ pub fn main() !u8 {
         }
     };
 
-
-    {
-        const ext_name = comptime x.Slice(u16, [*]const u8).initComptime("RENDER");
-        var msg: [x.query_extension.getLen(ext_name.len)]u8 = undefined;
-        x.query_extension.serialize(&msg, ext_name);
-        try conn.send(&msg);
-    }
-    _ = try x.readOneMsg(conn.reader(), @alignCast(buf.nextReadBuffer()));
-    const opt_render_ext: ?struct { opcode: u8 } = blk: {
-        switch (x.serverMsgTaggedUnion(@alignCast(buf.double_buffer_ptr))) {
-            .reply => |msg_reply| {
-                const msg: *x.ServerMsg.QueryExtension = @ptrCast(msg_reply);
-                if (msg.present == 0) {
-                    std.log.info("RENDER extension: not present", .{});
-                    break :blk null;
-                }
-                std.debug.assert(msg.present == 1);
-                std.log.info("RENDER extension: opcode={}", .{msg.major_opcode});
-                break :blk .{ .opcode = msg.major_opcode };
-            },
-            else => |msg| {
-                std.log.err("expected a reply but got {}", .{msg});
-                return 1;
-            },
-
-        }
-    };
+    const opt_render_ext = try common.getExtensionInfo(
+        conn.sock,
+        &buf,
+        "RENDER"
+    );
     if (opt_render_ext) |render_ext| {
+        const expected_version: common.ExtensionVersion = .{ .major_version = 0, .minor_version = 11 };
         {
             var msg: [x.render.query_version.len]u8 = undefined;
             x.render.query_version.serialize(&msg, render_ext.opcode, .{
-                .major_version = 0,
-                .minor_version = 11,
+                .major_version = expected_version.major_version,
+                .minor_version = expected_version.minor_version,
             });
             try conn.send(&msg);
         }
@@ -250,13 +229,62 @@ pub fn main() !u8 {
         switch (x.serverMsgTaggedUnion(@alignCast(buf.double_buffer_ptr))) {
             .reply => |msg_reply| {
                 const msg: *x.render.query_version.Reply = @ptrCast(msg_reply);
-                std.log.info("RENDER extension: version {}.{}", .{msg.major_version, msg.minor_version});
-                if (msg.major_version != 0) {
-                    std.log.err("xrender extension major version {} too new", .{msg.major_version});
+                std.log.info("X RENDER extension: version {}.{}", .{msg.major_version, msg.minor_version});
+                if (msg.major_version != expected_version.major_version) {
+                    std.log.err("X RENDER extension major version is {} but we expect {}", .{
+                        msg.major_version,
+                        expected_version.major_version,
+                    });
                     return 1;
                 }
-                if (msg.minor_version < 11) {
-                    std.log.err("xrender extension minor version {} too old", .{msg.minor_version});
+                if (msg.minor_version < expected_version.minor_version) {
+                    std.log.err("X RENDER extension minor version is {}.{} but I've only tested >= {}.{})", .{
+                        msg.major_version,
+                        msg.minor_version,
+                        expected_version.major_version,
+                        expected_version.minor_version,
+                    });
+                    return 1;
+                }
+            },
+            else => |msg| {
+                std.log.err("expected a reply but got {}", .{msg});
+                return 1;
+            },
+        }
+    }
+
+    const opt_shape_ext = try common.getExtensionInfo(
+        conn.sock,
+        &buf,
+        "SHAPE"
+    );
+    if (opt_shape_ext) |shape_ext| {
+        const expected_version: common.ExtensionVersion = .{ .major_version = 1, .minor_version = 1 };
+        {
+            var msg: [x.shape.query_version.len]u8 = undefined;
+            x.shape.query_version.serialize(&msg, shape_ext.opcode);
+            try conn.send(&msg);
+        }
+        _ = try x.readOneMsg(conn.reader(), @alignCast(buf.nextReadBuffer()));
+        switch (x.serverMsgTaggedUnion(@alignCast(buf.double_buffer_ptr))) {
+            .reply => |msg_reply| {
+                const msg: *x.shape.query_version.Reply = @ptrCast(msg_reply);
+                std.log.info("X SHAPE extension: version {}.{}", .{msg.major_version, msg.minor_version});
+                if (msg.major_version != expected_version.major_version) {
+                    std.log.err("X SHAPE extension major version is {} but we expect {}", .{
+                        msg.major_version,
+                        expected_version.major_version,
+                    });
+                    return 1;
+                }
+                if (msg.minor_version < expected_version.minor_version) {
+                    std.log.err("X SHAPE extension minor version is {}.{} but I've only tested >= {}.{})", .{
+                        msg.major_version,
+                        msg.minor_version,
+                        expected_version.major_version,
+                        expected_version.minor_version,
+                    });
                     return 1;
                 }
             },

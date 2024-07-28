@@ -33,12 +33,11 @@ pub const get_version = struct {
         + 2 // wanted minor version
         ;
     pub const Args = struct {
-        ext_opcode: u8,
-        wanted_major_version: u8,
-        wanted_minor_version: u16,
+        major_version: u8,
+        minor_version: u16,
     };
-    pub fn serialize(buf: [*]u8, args: Args) void {
-        buf[0] = args.ext_opcode;
+    pub fn serialize(buf: [*]u8, ext_opcode: u8, args: Args) void {
+        buf[0] = ext_opcode;
         buf[1] = @intFromEnum(ExtOpcode.get_version);
         comptime { std.debug.assert(len & 0x3 == 0); }
         x.writeIntNative(u16, buf + 2, len >> 2);

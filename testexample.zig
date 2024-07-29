@@ -370,10 +370,9 @@ pub fn main() !u8 {
         const expected_version: common.ExtensionVersion = .{ .major_version = 2, .minor_version = 2 };
         {
             var msg: [x.testext.get_version.len]u8 = undefined;
-            x.testext.get_version.serialize(&msg, .{
-                .ext_opcode = test_ext.opcode,
-                .wanted_major_version = expected_version.major_version,
-                .wanted_minor_version = expected_version.minor_version,
+            x.testext.get_version.serialize(&msg, test_ext.opcode, .{
+                .major_version = expected_version.major_version,
+                .minor_version = expected_version.minor_version,
             });
             try conn.send(&msg);
         }

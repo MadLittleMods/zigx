@@ -41,9 +41,9 @@ pub const get_version = struct {
         buf[1] = @intFromEnum(ExtOpcode.get_version);
         comptime { std.debug.assert(len & 0x3 == 0); }
         x.writeIntNative(u16, buf + 2, len >> 2);
-        buf[4] = args.wanted_major_version;
+        buf[4] = args.major_version;
         buf[5] = 0; // unused
-        x.writeIntNative(u16, buf + 6, args.wanted_minor_version);
+        x.writeIntNative(u16, buf + 6, args.minor_version);
     }
 
     comptime { std.debug.assert(@sizeOf(Reply) == 32); }

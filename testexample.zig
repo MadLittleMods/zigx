@@ -213,6 +213,76 @@ pub fn main() !u8 {
         },
     }
 
+    // Figure out the atom for "UTF8_STRING"
+    {
+        const atom_name = comptime x.Slice(u16, [*]const u8).initComptime("UTF8_STRING");
+        var msg_buf: [x.intern_atom.getLen(atom_name.len)]u8 = undefined;
+        x.intern_atom.serialize(&msg_buf, .{
+            .only_if_exists = false,
+            .name = atom_name,
+        });
+        try conn.send(msg_buf[0..]);
+    }
+    const utf8_string_atom: x.Atom = blk: {
+        _ = try x.readOneMsg(conn.reader(), @alignCast(buf.nextReadBuffer()));
+        switch (x.serverMsgTaggedUnion(@alignCast(buf.double_buffer_ptr))) {
+            .reply => |msg_reply| {
+                const atom = x.readIntNative(u32, msg_reply.reserve_min[0..]);
+                break :blk @as(x.Atom, @enumFromInt(atom));
+            },
+            else => |msg| {
+                std.log.err("expected a reply for `x.intern_atom` but got {}", .{msg});
+                return error.ExpectedReplyForInternAtom;
+            },
+        }
+    };
+
+    // Set the window name
+    {
+        const window_name = comptime x.Slice(u16, [*]const u8).initComptime("zigx Test Example");
+        const change_property = x.change_property.withFormat(u8);
+        var msg_buf: [change_property.getLen(window_name.len)]u8 = undefined;
+        change_property.serialize(&msg_buf, .{
+            .mode = .replace,
+            .window_id = ids.window(),
+            .property = x.Atom.WM_NAME,
+            .type = utf8_string_atom,
+            .values = window_name,
+        });
+        try conn.send(msg_buf[0..]);
+    }
+
+    // Test `get_property` by retrieving the property we just set
+    {
+        var msg_buf: [x.get_property.len]u8 = undefined;
+        x.get_property.serialize(&msg_buf, .{
+            .window_id = ids.window(),
+            .property = x.Atom.WM_NAME,
+            .@"type" = utf8_string_atom,
+            .offset = 0,
+            .len = 64,
+            .delete = false,
+        });
+        try conn.send(msg_buf[0..]);
+    }
+    _ = try x.readOneMsg(conn.reader(), @alignCast(buf.nextReadBuffer()));
+    switch (x.serverMsgTaggedUnion(@alignCast(buf.double_buffer_ptr))) {
+        .reply => |msg_reply| {
+            const msg: *x.get_property.Reply = @ptrCast(msg_reply);
+            std.log.debug("get_property responded with: {}", .{msg});
+            const opt_window_name = try msg.getValueBytes();
+            if (opt_window_name) |window_name| {
+                std.log.debug("Retrieved window name: {s}", .{window_name});
+            } else {
+                std.log.err("Unable to figure out the window name from get_property reply: {}", .{msg});
+            }
+        },
+        else => |msg| {
+            std.log.err("expected a reply for `x.get_property` but got {}", .{msg});
+            return error.ExpectedReplyForGetProperty;
+        },
+    }
+
     {
         var msg_buf: [x.create_gc.max_len]u8 = undefined;
         const len = x.create_gc.serialize(&msg_buf, .{

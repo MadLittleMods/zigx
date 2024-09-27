@@ -36,6 +36,7 @@ pub const render = @import("xrender.zig");
 pub const dbe = @import("xdbe.zig");
 pub const shape = @import("xshape.zig");
 pub const testext = @import("xtest.zig");
+pub const composite = @import("xcomposite.zig");
 
 // Expose some helpful stuff
 pub const MappedFile = @import("MappedFile.zig");

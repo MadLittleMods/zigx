@@ -2200,9 +2200,14 @@ pub const ServerMsgTaggedUnion = union(enum) {
     keymap_notify: *align(4) Event.KeymapNotify,
     expose: *align(4) Event.Expose,
     no_exposure: *align(4) Event.NoExposure,
+    create_notify: *align(4) Event.CreateNotify,
+    destroy_notify: *align(4) Event.DestroyNotify,
     map_notify: *align(4) Event.MapNotify,
+    unmap_notify: *align(4) Event.UnmapNotify,
     reparent_notify: *align(4) Event.ReparentNotify,
     configure_notify: *align(4) Event.ConfigureNotify,
+    gravity_notify: *align(4) Event.GravityNotify,
+    circulate_notify: *align(4) Event.CirculateNotify,
     mapping_notify: *align(4) Event.MappingNotify,
     generic_extension_event: *align(4) ServerMsg.GenericExtensionEvent,
 };
@@ -2220,9 +2225,14 @@ pub fn serverMsgTaggedUnion(msg_ptr: [*]align(4) u8) ServerMsgTaggedUnion {
         .keymap_notify => return .{ .keymap_notify = @ptrCast(msg_ptr) },
         .expose => return .{ .expose = @ptrCast(msg_ptr) },
         .no_exposure => return .{ .no_exposure = @ptrCast(msg_ptr) },
+        .create_notify => return .{ .create_notify = @ptrCast(msg_ptr) },
+        .destroy_notify => return .{ .destroy_notify = @ptrCast(msg_ptr) },
         .map_notify => return .{ .map_notify = @ptrCast(msg_ptr) },
+        .unmap_notify => return .{ .unmap_notify = @ptrCast(msg_ptr) },
         .reparent_notify => return .{ .reparent_notify = @ptrCast(msg_ptr) },
         .configure_notify => return .{ .configure_notify = @ptrCast(msg_ptr) },
+        .gravity_notify => return .{ .gravity_notify = @ptrCast(msg_ptr) },
+        .circulate_notify => return .{ .circulate_notify = @ptrCast(msg_ptr) },
         .mapping_notify => return .{ .mapping_notify = @ptrCast(msg_ptr) },
         .generic_extension_event => return .{ .generic_extension_event = @ptrCast(msg_ptr) },
         else => return .{ .unhandled = @ptrCast(msg_ptr) },
@@ -2522,6 +2532,34 @@ pub const Event = extern union {
         _: [21]u8,
     };
 
+    comptime { std.debug.assert(@sizeOf(CreateNotify) == 32); }
+    pub const CreateNotify = extern struct {
+        code: u8,
+        unused: u8,
+        sequence: u16,
+        parent_window_id: u32,
+        window_id: u32,
+        x_position: i16,
+        y_position: i16,
+        width: u16,
+        height: u16,
+        border_width: u16,
+        override_redirect: u8,
+        _: [9]u8,
+    };
+
+    comptime { std.debug.assert(@sizeOf(DestroyNotify) == 32); }
+    pub const DestroyNotify = extern struct {
+        code: u8,
+        unused: u8,
+        sequence: u16,
+        /// The window on which the event was generated
+        origin_window_id: u32,
+        /// The window that is destroyed.
+        target_window_id: u32,
+        _: [20]u8,
+    };
+
     comptime { std.debug.assert(@sizeOf(MapNotify) == 32); }
     pub const MapNotify = extern struct {
         code: u8,
@@ -2530,6 +2568,19 @@ pub const Event = extern union {
         parent: u32,
         window: u32,
         _: [20]u8,
+    };
+
+    comptime { std.debug.assert(@sizeOf(UnmapNotify) == 32); }
+    pub const UnmapNotify = extern struct {
+        code: u8,
+        unused: u8,
+        sequence: u16,
+        /// The window on which the event was generated
+        origin_window_id: u32,
+        /// The window that is unmapped.
+        target_window_id: u32,
+        from_configure: u8,
+        _: [19]u8,
     };
 
     comptime { std.debug.assert(@sizeOf(ReparentNotify) == 32); }
@@ -2561,6 +2612,34 @@ pub const Event = extern union {
         border_width: u16,
         override_redirect: u8,
         _: [5]u8,
+    };
+
+    comptime { std.debug.assert(@sizeOf(GravityNotify) == 32); }
+    pub const GravityNotify = extern struct {
+        code: u8,
+        unused: u8,
+        sequence: u16,
+        /// The window on which the event was generated
+        origin_window_id: u32,
+        /// The window that is unmapped.
+        target_window_id: u32,
+        x: i16,
+        y: i16,
+        _: [16]u8,
+    };
+
+    comptime { std.debug.assert(@sizeOf(CirculateNotify) == 32); }
+    pub const CirculateNotify = extern struct {
+        code: u8,
+        unused: u8,
+        sequence: u16,
+        /// The window on which the event was generated
+        origin_window_id: u32,
+        /// The window that is unmapped.
+        target_window_id: u32,
+        unused2: u32,
+        place: u8,
+        _: [15]u8,
     };
 };
 comptime { std.debug.assert(@sizeOf(Event) == 32); }

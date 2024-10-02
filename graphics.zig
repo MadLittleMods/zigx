@@ -219,10 +219,14 @@ pub fn main() !u8 {
                     std.log.info("todo: server msg {}", .{msg});
                     return error.UnhandledServerMsg;
                 },
+                .create_notify,
+                .destroy_notify,
                 .map_notify,
+                .unmap_notify,
                 .reparent_notify,
                 .configure_notify,
-                .generic_extension_event,
+                .gravity_notify,
+                .circulate_notify,
                 => unreachable, // did not register for these
             }
         }

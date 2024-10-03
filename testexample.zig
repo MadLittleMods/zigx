@@ -412,6 +412,21 @@ pub fn main() !u8 {
                             format,
                         });
                     }
+                    // for(0..msg.num_screens) |screen_index| {
+                    //     const picture_screen = try msg.getPictureScreenAtIndex(@intCast(screen_index));
+                    //     for(0..picture_screen.num_depths) |depth_index| {
+                    //         const picture_depth = try picture_screen.getPictureDepthAtIndex(@intCast(depth_index));
+                    //         const picture_visuals = picture_depth.getPictureVisuals();
+                    //         for(picture_visuals) |picture_visual| {
+                    //             std.log.info("RENDER extension: pict visual {d} -> format {d} (depth: {d}, screen {d})", .{
+                    //                 picture_visual.visual_id,
+                    //                 picture_visual.picture_format_id,
+                    //                 picture_depth.depth,
+                    //                 screen_index,
+                    //             });
+                    //         }
+                    //     }
+                    // }
                     break :blk .{
                         .matching_picture_format = try findMatchingPictureFormat(msg.getPictureFormats()[0..], screen.root_depth),
                     };

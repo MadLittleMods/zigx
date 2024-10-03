@@ -177,6 +177,73 @@ pub const PictureFormatInfo = extern struct {
 };
 comptime { if (@sizeOf(PictureFormatInfo) != 28) @compileError("PictureFormatInfo size is wrong"); }
 
+pub const PictureVisualInfo = extern struct {
+    visual_id: u32,
+    picture_format_id: u32,
+};
+
+pub const PictureDepthInfo = extern struct {
+    depth: u8,
+    pad: u8,
+    num_visuals: u16,
+    pad2: u32,
+    _picture_visuals_array_start: [0]PictureVisualInfo,
+
+    pub fn getPictureVisuals(self: *const @This()) []align(4) const PictureVisualInfo {
+        const picture_visual_ptr_list: [*]align(4) PictureVisualInfo = @ptrFromInt(@intFromPtr(&self._picture_visuals_array_start));
+        return picture_visual_ptr_list[0..self.num_visuals];
+    }
+
+    pub fn calculateTotalSize(self: *const @This()) !usize {
+        var total_size: usize = @sizeOf(PictureDepthInfo) + (self.num_visuals * @sizeOf(PictureVisualInfo));
+        return total_size;
+    }
+};
+
+pub const PictureScreenInfo = extern struct {
+    num_depths: u32,
+    fallback_format: u32,
+    _picture_depths_array_start: [0]PictureDepthInfo,
+
+    /// Get the offset in the `PictureScreenInfo` object to find the `PictureDepthInfo`
+    /// at the specified index.
+    fn getPointerOffsetForPictureDepthAtIndex(self: *const @This(), depth_index: u32) !usize {
+        if (depth_index >= self.num_depths) {
+            return error.InvalidIndex;
+        }
+
+        var pointer_offset = @intFromPtr(&self._picture_depths_array_start);
+        var current_index: u32 = 0;
+        while (current_index < depth_index) {
+            const current_depth_info: *PictureDepthInfo = @ptrFromInt(pointer_offset);
+            pointer_offset += try current_depth_info.calculateTotalSize();
+
+            current_index += 1;
+        }
+        return pointer_offset;
+    }
+
+    /// Get the `PictureDepthInfo` at the specified index.
+    pub fn getPictureDepthAtIndex(self: *const @This(), depth_index: u32) !*const PictureDepthInfo {
+        const depth_info: *PictureDepthInfo = @ptrFromInt(try self.getPointerOffsetForPictureDepthAtIndex(depth_index));
+        return depth_info;
+    }
+
+    pub fn calculateTotalSize(self: *const @This()) !usize {
+        var total_size: usize = @sizeOf(PictureScreenInfo);
+        var current_index: u32 = 0;
+        while (current_index < self.num_depths) {
+            const current_depth_info: *PictureDepthInfo = @ptrFromInt(
+                @intFromPtr(&self._picture_depths_array_start) + total_size
+            );
+            total_size += try current_depth_info.calculateTotalSize();
+
+            current_index += 1;
+        }
+        return total_size;
+    }
+};
+
 pub const query_pict_formats = struct {
     pub const len =
               2 // extension and command opcodes
@@ -201,12 +268,40 @@ pub const query_pict_formats = struct {
         unused: u32,
         _picture_formats_array_start: [0]PictureFormatInfo,
 
-        pub fn getPictureFormats(self: *@This()) []align(4) const PictureFormatInfo {
+        pub fn getPictureFormats(self: *const @This()) []align(4) const PictureFormatInfo {
             const picture_format_ptr_list: [*]align(4) PictureFormatInfo = @ptrFromInt(@intFromPtr(&self._picture_formats_array_start));
             return picture_format_ptr_list[0..self.num_formats];
         }
 
-        // TODO: Get lists of screens, depths, visuals, subpixels
+        fn getPointerOffsetAfterPictureFormats(self: *const @This()) !usize {
+            return @intFromPtr(&self._picture_formats_array_start) + (self.num_formats * @sizeOf(PictureFormatInfo));
+        }
+
+        /// Get the offset in the `Reply` object to find the `PictureScreenInfo`
+        /// at the specified index.
+        fn getPointerOffsetForPictureScreenAtIndex(self: *const @This(), screen_index: u32) !usize {
+            if (screen_index >= self.num_depths) {
+                return error.InvalidIndex;
+            }
+
+            var pointer_offset = try self.getPointerOffsetAfterPictureFormats();
+            var current_index: u32 = 0;
+            while (current_index < screen_index) {
+                const current_screen_info: *PictureScreenInfo = @ptrFromInt(pointer_offset);
+                pointer_offset += try current_screen_info.calculateTotalSize();
+
+                current_index += 1;
+            }
+            return pointer_offset;
+        }
+
+        /// Get the `PictureScreenInfo` at the specified index.
+        pub fn getPictureScreenAtIndex(self: *const @This(), screen_index: u32) !*const PictureScreenInfo {
+            const depth_info: *PictureScreenInfo = @ptrFromInt(try self.getPointerOffsetForPictureScreenAtIndex(screen_index));
+            return depth_info;
+        }
+
+        // TODO: Get lists of subpixels
     };
     comptime { std.debug.assert(@sizeOf(Reply) == 32); }
 };

@@ -751,6 +751,7 @@ pub const connect_setup = struct {
 pub const Opcode = enum(u8) {
     create_window = 1,
     change_window_attributes = 2,
+    get_window_attributes = 3,
     map_window = 8,
     configure_window = 12,
     query_tree = 15,
@@ -785,7 +786,7 @@ pub const Opcode = enum(u8) {
     _,
 };
 
-pub const BitGravity = enum(u4) {
+pub const BitGravity = enum(u8) {
     forget = 0,
     north_west = 1,
     north = 2,
@@ -798,7 +799,7 @@ pub const BitGravity = enum(u4) {
     south_east = 9,
     static = 10,
 };
-pub const WinGravity = enum(u4) {
+pub const WinGravity = enum(u8) {
     unmap = 0,
     north_west = 1,
     north = 2,
@@ -896,6 +897,12 @@ pub const pointer_event = struct {
 };
 
 pub const window = struct {
+    pub const Class = enum(u8) {
+        copy_from_parent = 0,
+        input_output = 1,
+        input_only = 2,
+    };
+
     pub const option_flags = struct {
         pub const bg_pixmap         : u32 = (1 <<  0);
         pub const bg_pixel          : u32 = (1 <<  1);
@@ -916,7 +923,7 @@ pub const window = struct {
 
     pub const BgPixmap = enum(u32) { none = 0, copy_from_parent = 1 };
     pub const BorderPixmap = enum(u32) { copy_from_parent = 0 };
-    pub const BackingStore = enum(u32) { not_useful = 0, when_mapped = 1, always = 2 };
+    pub const BackingStore = enum(u8) { not_useful = 0, when_mapped = 1, always = 2 };
     pub const Colormap = enum(u32) { copy_from_parent = 0 };
     pub const Cursor = enum(u32) { none = 0 };
     pub const Options = struct {
@@ -951,11 +958,6 @@ pub const create_window = struct {
             ;
     pub const max_len = non_option_len + (15 * 4);  // 15 possible 4-byte options
 
-    pub const Class = enum(u8) {
-        copy_from_parent = 0,
-        input_output = 1,
-        input_only = 2,
-    };
     pub const Args = struct {
         window_id: u32,
         parent_window_id: u32,
@@ -965,7 +967,7 @@ pub const create_window = struct {
         width: u16,
         height: u16,
         border_width: u16,
-        class: Class,
+        class: window.Class,
         visual_id: u32,
     };
 
@@ -1034,6 +1036,48 @@ pub const change_window_attributes = struct {
         writeIntNative(u16, buf + 2, request_len >> 2);
         return request_len;
     }
+};
+
+
+pub const get_window_attributes = struct {
+    pub const len =
+              2 // opcode and unused
+            + 2 // request length
+            + 4 // window id
+            ;
+    pub fn serialize(buf: [*]u8, window_id: u32) void {
+        buf[0] = @intFromEnum(Opcode.get_window_attributes);
+        buf[1] = 0; // unused
+        writeIntNative(u16, buf + 2, len >> 2);
+        writeIntNative(u32, buf + 4, window_id);
+    }
+
+    pub const MapState = enum(u8) {
+        unampped = 0,
+        unviewable = 1,
+        viewable = 2,
+    };
+    pub const Reply = extern struct {
+        response_type: ReplyKind,
+        backing_store: window.BackingStore,
+        sequence: u16,
+        word_len: u32,
+        visual_id: u32,
+        class: window.Class,
+        bit_gravity: BitGravity,
+        win_gravity: WinGravity,
+        backing_planes: u32,
+        backing_pixel: u32,
+        save_under: u8,
+        map_is_installed: u8,
+        map_state: MapState,
+        override_redirect: u8,
+        color_map: u32,
+        all_event_mask: u32,
+        your_event_mask: u32,
+        do_not_propagate_mask: u16,
+        _: [2]u8, // unused
+    };
 };
 
 pub const map_window = struct {

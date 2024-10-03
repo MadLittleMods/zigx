@@ -184,6 +184,24 @@ pub fn main() !u8 {
     var buf = double_buf.contiguousReadBuffer();
     const buffer_limit = buf.half_len;
 
+    // Test `get_window_attributes`
+    {
+        var msg_buf: [x.get_window_attributes.len]u8 = undefined;
+        x.get_window_attributes.serialize(&msg_buf, ids.window());
+        try conn.send(msg_buf[0..]);
+    }
+    _ = try x.readOneMsg(conn.reader(), @alignCast(buf.nextReadBuffer()));
+    switch (x.serverMsgTaggedUnion(@alignCast(buf.double_buffer_ptr))) {
+        .reply => |msg_reply| {
+            const msg: *x.get_window_attributes.Reply = @ptrCast(msg_reply);
+            std.log.debug("get_window_attributes {any}", .{msg});
+        },
+        else => |msg| {
+            std.log.err("expected a reply for `x.get_window_attributes` but got {}", .{msg});
+            return error.ExpectedReplyForGetWindowAttributes;
+        },
+    }
+
     // Test `query_tree` by finding our own window in the list of children of the root
     // window
     {

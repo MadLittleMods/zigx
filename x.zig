@@ -1786,7 +1786,7 @@ pub const poly_line = struct {
     }
 };
 
-pub const Rectangle = struct {
+pub const Rectangle = extern struct {
     x: i16, y: i16, width: u16, height: u16,
 };
 comptime { std.debug.assert(@sizeOf(Rectangle) == 8); }

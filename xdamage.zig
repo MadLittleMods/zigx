@@ -9,6 +9,35 @@ pub const ExtOpcode = enum(u8) {
     add = 4,
 };
 
+pub const DamageNotifyEvent = extern struct {
+    /// This will end up being the extension opcode
+    kind: x.ServerMsgKind,
+    /// The level of the damage being reported.
+    /// If the 0x80 bit is set, indicates there are subsequent Damage events
+    /// being delivered immediately as part of a larger Damage region.
+    report_level_and_more_raw: u8,
+    sequence: u16,
+    /// The drawable for which damage is being reported.
+    drawable_id: u32,
+    /// The Damage object being used to track the damage.
+    damage_id: u32,
+    /// Time when the event was generated (in milliseconds).
+    timestamp: u32,
+    /// Damaged area of the drawable.
+    area: x.Rectangle,
+    /// Total area of the drawable.
+    geometry: x.Rectangle,
+
+    pub fn getReportLevel(self: @This()) ReportLevel {
+        return @enumFromInt(self.report_level_and_more_raw & 0x7F);
+    }
+
+    pub fn hasMore(self: @This()) bool {
+        return (self.report_level_and_more_raw & 0x80) != 0;
+    }
+};
+comptime { std.debug.assert(@sizeOf(DamageNotifyEvent) == 32); }
+
 
 pub const query_version = struct {
     pub const len =
@@ -45,9 +74,25 @@ pub const query_version = struct {
 
 
 pub const ReportLevel = enum(u8) {
+    /// Delivers DamageNotify events each time the screen
+    /// is modified with rectangular bounds that circumscribe
+    /// the damaged area.  No attempt to compress out overlapping
+    /// rectangles is made.
     raw_rectangles = 0,
+    /// Delivers DamageNotify events each time damage occurs
+    /// which is not included in the damage region.  The
+    /// reported rectangles include only the changes to that
+    /// area, not the raw damage data.
     delta_rectangles = 1,
+    /// Delivers DamageNotify events each time the bounding
+    /// box enclosing the damage region increases in size.
+    /// The reported rectangle encloses the entire damage region,
+    /// not just the changes to that size.
     bounding_box = 2,
+    /// Delivers a single DamageNotify event each time the
+    /// damage rectangle changes from empty to non-empty, and
+    /// also whenever the result of a DamageSubtract request
+    /// results in a non-empty region.
     non_empty = 3,
 };
 

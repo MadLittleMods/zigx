@@ -168,8 +168,8 @@ pub const subtract = struct {
         comptime { std.debug.assert(len & 0x3 == 0); }
         x.writeIntNative(u16, buf + 2, len >> 2);
         x.writeIntNative(u32, buf + 4, args.damage_id);
-        x.writeIntNative(u32, buf + 4, args.repair_region_id);
-        x.writeIntNative(u32, buf + 4, args.parts_region_id);
+        x.writeIntNative(u32, buf + 8, args.repair_region_id);
+        x.writeIntNative(u32, buf + 12, args.parts_region_id);
     }
 };
 
@@ -193,7 +193,7 @@ pub const add = struct {
         comptime { std.debug.assert(len & 0x3 == 0); }
         x.writeIntNative(u16, buf + 2, len >> 2);
         x.writeIntNative(u32, buf + 4, args.damage_id);
-        x.writeIntNative(u32, buf + 4, args.region_id);
+        x.writeIntNative(u32, buf + 8, args.region_id);
     }
 };
 

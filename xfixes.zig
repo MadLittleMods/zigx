@@ -34,8 +34,8 @@ pub const ExtOpcode = enum(u8) {
     // Version 3
     // expand_region = 28,
     // Version 4
-    // hide_cursor = 29,
-    // show_cursor = 30,
+    hide_cursor = 29,
+    show_cursor = 30,
     // Version 5
     // create_pointer_barrier = 31,
     // delete_pointer_barrier = 32,
@@ -285,5 +285,43 @@ pub const set_picture_clip_region = struct {
         x.writeIntNative(u32, buf + 8, args.region_id);
         x.writeIntNative(u32, buf + 10, args.x_origin);
         x.writeIntNative(u32, buf + 12, args.y_origin);
+    }
+};
+
+pub const hide_cursor = struct {
+    pub const len =
+          2 // extension and command opcodes
+        + 2 // request length
+        + 4 // window_id
+        ;
+    pub const Args = struct {
+        ext_opcode: u8,
+        window_id: u32,
+    };
+    pub fn serialize(buf: [*]u8, args: Args) void {
+        buf[0] = args.ext_opcode;
+        buf[1] = @intFromEnum(ExtOpcode.hide_cursor);
+        comptime { std.debug.assert(len & 0x3 == 0); }
+        x.writeIntNative(u16, buf + 2, len >> 2);
+        x.writeIntNative(u32, buf + 4, args.window_id);
+    }
+};
+
+pub const show_cursor = struct {
+    pub const len =
+          2 // extension and command opcodes
+        + 2 // request length
+        + 4 // window_id
+        ;
+    pub const Args = struct {
+        ext_opcode: u8,
+        window_id: u32,
+    };
+    pub fn serialize(buf: [*]u8, args: Args) void {
+        buf[0] = args.ext_opcode;
+        buf[1] = @intFromEnum(ExtOpcode.show_cursor);
+        comptime { std.debug.assert(len & 0x3 == 0); }
+        x.writeIntNative(u16, buf + 2, len >> 2);
+        x.writeIntNative(u32, buf + 4, args.window_id);
     }
 };

@@ -288,6 +288,9 @@ pub const set_picture_clip_region = struct {
     }
 };
 
+/// A client sends this request to indicate that it wants the cursor image to be hidden
+/// (i.e. to not be displayed) when the sprite is inside the specified window, or one of
+/// its subwindows.
 pub const hide_cursor = struct {
     pub const len =
           2 // extension and command opcodes
@@ -307,6 +310,8 @@ pub const hide_cursor = struct {
     }
 };
 
+/// A client sends this request to indicate that it wants the cursor image to be
+/// displayed when the sprite is inside the specified window, or one of its subwindows.
 pub const show_cursor = struct {
     pub const len =
           2 // extension and command opcodes

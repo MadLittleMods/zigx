@@ -159,7 +159,9 @@ pub const subtract = struct {
     pub const Args = struct {
         ext_opcode: u8,
         damage_id: u32,
+        /// The region to repair
         repair_region_id: u32,
+        /// An output parameter to store the regions that were actually repaired
         parts_region_id: u32,
     };
     pub fn serialize(buf: [*]u8, args: Args) void {

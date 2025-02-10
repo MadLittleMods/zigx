@@ -42,7 +42,7 @@ pub const ExtOpcode = enum(u8) {
     // new in version 0.9
     // add_traps = 32,
     // new in version 0.10
-    // create_solid_fill = 33,
+    create_solid_fill = 33,
     // create_linear_gradient = 34,
     // create_radial_gradient = 35,
     // create_conical_gradient = 36,
@@ -449,5 +449,46 @@ pub const composite = struct {
         x.writeIntNative(i16, buf + 30, args.dst_y);
         x.writeIntNative(u16, buf + 32, args.width);
         x.writeIntNative(u16, buf + 34, args.height);
+    }
+};
+
+/// 16-bit precision color.
+///
+/// Example:
+/// ```
+/// Color {
+///     .red = 0x0000,
+///     .green = 0x0000,
+///     .blue = 0x0000,
+///     .alpha = 0xffff,
+/// }
+/// ```
+pub const Color = struct {
+    red: u16,
+    green: u16,
+    blue: u16,
+    alpha: u16,
+};
+
+pub const create_solid_fill = struct {
+    pub const len =
+              2 // extension and command opcodes
+            + 2 // request length
+            + 4 // window_id
+            + 8 // color
+    ;
+    pub const Args = struct {
+        picture_id: u32,
+        color: Color,
+    };
+    pub fn serialize(buf: [*]u8, ext_opcode: u8, args: Args) void {
+        buf[0] = ext_opcode;
+        buf[1] = @intFromEnum(ExtOpcode.create_solid_fill);
+        x.writeIntNative(u16, buf + 2, len >> 2);
+        x.writeIntNative(u32, buf + 4, args.picture_id);
+        x.writeIntNative(u16, buf + 8, args.color.red);
+        x.writeIntNative(u16, buf + 10, args.color.green);
+        x.writeIntNative(u16, buf + 12, args.color.blue);
+        x.writeIntNative(u16, buf + 14, args.color.alpha);
     }
 };
